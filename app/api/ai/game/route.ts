@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { callBailianChat, type BailianMessage } from "@/lib/bailian";
-import { buildGameSetupPrompt, buildJudgementPrompt } from "@/lib/prompts";
+import { callBailianChat, type BailianMessage } from "../../../../lib/bailian";
+import { buildGameSetupPrompt, buildJudgementPrompt } from "../../../../lib/prompts";
 
 type DescriptionSeed = {
   side: string;
