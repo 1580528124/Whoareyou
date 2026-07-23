@@ -1,0 +1,408 @@
+:root {
+  color-scheme: dark;
+  --bg: #101113;
+  --panel: #1b1d21;
+  --panel-strong: #22262c;
+  --text: #f4f1ea;
+  --muted: #b6b0a6;
+  --line: #353940;
+  --accent: #f0b35f;
+  --accent-2: #73c7b7;
+  --danger: #eb6a67;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(115, 199, 183, 0.16), transparent 30rem),
+    linear-gradient(135deg, #101113 0%, #18191b 48%, #151817 100%);
+  color: var(--text);
+  font-family: Arial, "Microsoft YaHei", sans-serif;
+  overflow: hidden;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 44px;
+  border: 1px solid rgba(240, 179, 95, 0.35);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #18120b;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0 18px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.actionButton {
+  width: 100%;
+}
+
+textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111316;
+  color: var(--text);
+  padding: 14px;
+  line-height: 1.6;
+}
+
+.textInput {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111316;
+  color: var(--text);
+  padding: 0 14px;
+}
+
+.shell {
+  width: min(1480px, calc(100% - 28px));
+  height: 100vh;
+  margin: 0 auto;
+  padding: 14px 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) minmax(160px, 0.45fr);
+  gap: 12px;
+}
+
+.topbar,
+.sectionHeader,
+.board,
+.timeline,
+.player,
+.log {
+  display: grid;
+  gap: 16px;
+}
+
+.topbar {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent-2);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(30px, 5vw, 52px);
+  line-height: 0.95;
+}
+
+h2 {
+  font-size: 22px;
+}
+
+.roundBadge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 10px 14px;
+}
+
+.board {
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+  min-height: 0;
+}
+
+.timeline {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 0;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(27, 29, 33, 0.92);
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px;
+}
+
+.primary {
+  min-height: 0;
+  overflow: auto;
+  background:
+    linear-gradient(145deg, rgba(240, 179, 95, 0.12), transparent 52%),
+    var(--panel);
+}
+
+.sectionHeader {
+  grid-template-columns: 1fr auto;
+  align-items: start;
+}
+
+.sectionHeader span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.stage {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.stage p {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.order,
+.voteGrid,
+.roundSpeeches,
+.players,
+.logs {
+  display: grid;
+  gap: 10px;
+}
+
+.players,
+.logs,
+.tokenList {
+  overflow: auto;
+}
+
+.players {
+  max-height: 35vh;
+}
+
+.logs {
+  max-height: 100%;
+}
+
+.order {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.order span,
+.player,
+.log,
+.voteCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.order span {
+  padding: 10px 12px;
+  color: var(--muted);
+}
+
+.voteGrid {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.roundSpeeches {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.roundSpeech {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111316;
+  padding: 14px;
+}
+
+.roundSpeech span {
+  color: var(--accent-2);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.roundSpeech p {
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.voteCard {
+  color: var(--text);
+  background: var(--panel-strong);
+}
+
+.voteCard.selected {
+  border-color: var(--accent);
+  background: rgba(240, 179, 95, 0.18);
+}
+
+.player {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 12px;
+}
+
+.player strong {
+  display: block;
+}
+
+.player span,
+.player p,
+.log span,
+.log small,
+.empty {
+  color: var(--muted);
+}
+
+.player.eliminated {
+  opacity: 0.5;
+}
+
+.log {
+  padding: 12px;
+}
+
+.log p {
+  margin-top: 6px;
+  line-height: 1.6;
+}
+
+.log small {
+  display: block;
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.result h2 {
+  color: var(--accent);
+  font-size: 30px;
+}
+
+.errorText {
+  margin-top: 18px;
+  border: 1px solid rgba(235, 106, 103, 0.45);
+  border-radius: 8px;
+  background: rgba(235, 106, 103, 0.12);
+  color: #ffd2cf;
+  padding: 12px 14px;
+  line-height: 1.6;
+}
+
+.progressText {
+  margin-top: 18px;
+  border: 1px solid rgba(115, 199, 183, 0.38);
+  border-radius: 8px;
+  background: rgba(115, 199, 183, 0.1);
+  color: var(--accent-2);
+  padding: 12px 14px;
+  line-height: 1.6;
+}
+
+.usageBox {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111316;
+  padding: 14px;
+}
+
+.usageBox strong {
+  color: var(--accent);
+  font-size: 26px;
+}
+
+.usageBox span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.tokenList {
+  display: grid;
+  gap: 10px;
+  max-height: 26vh;
+  margin-top: 14px;
+}
+
+.tokenCall {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  padding: 12px;
+}
+
+.compactTimeline .panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.tokenCall div {
+  display: grid;
+  gap: 4px;
+}
+
+.tokenCall strong {
+  font-size: 14px;
+}
+
+.tokenCall span,
+.tokenCall small,
+.tokenCall p {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.tokenCall p {
+  color: var(--text);
+}
+
+@media (max-width: 820px) {
+  .shell {
+    width: min(100% - 24px, 1180px);
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    padding-top: 20px;
+    grid-template-rows: auto;
+  }
+
+  body {
+    overflow: auto;
+  }
+
+  .topbar,
+  .board,
+  .timeline,
+  .sectionHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .roundBadge {
+    width: fit-content;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+}

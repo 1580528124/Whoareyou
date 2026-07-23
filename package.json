@@ -1,0 +1,30 @@
+{
+  "name": "who-are-you-game",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "tokens:game": "node scripts/measure-game-tokens.mjs",
+    "db:generate": "node scripts/prisma-with-env.mjs generate",
+    "db:migrate": "node scripts/prisma-with-env.mjs migrate dev",
+    "db:check": "node scripts/check-db.mjs",
+    "db:inspect": "node scripts/inspect-db.mjs",
+    "db:studio": "node scripts/prisma-with-env.mjs studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "prisma": "^6.19.0",
+    "typescript": "^5.9.3"
+  }
+}
