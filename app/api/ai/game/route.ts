@@ -120,6 +120,29 @@ function isLowInformationSpeech(text: string) {
   return genericPatterns.some((pattern) => pattern.test(normalized));
 }
 
+function hasPlausibleAssociation(word: string, speech: string) {
+  const normalizedWord = normalizeText(word);
+  const normalizedSpeech = normalizeText(speech);
+  const associationRules = [
+    {
+      words: ["便利店", "超市", "药店", "奶茶店", "咖啡店", "书店", "快餐店"],
+      patterns: [/连锁店|连锁|门店|店面|到处都有|很多家|楼下|街边|二十四小时|24小时/],
+    },
+    {
+      words: ["自动售货机", "便利店", "超市", "小卖部"],
+      patterns: [/饮料|零食|扫码|投币|货架|买东西|临时买/],
+    },
+    {
+      words: ["剧本杀", "密室逃脱", "狼人杀"],
+      patterns: [/约局|身份|推理|复盘|朋友|线索|凶手/],
+    },
+  ];
+
+  return associationRules.some((rule) => {
+    return rule.words.includes(normalizedWord) && rule.patterns.some((pattern) => pattern.test(normalizedSpeech));
+  });
+}
+
 function adjustLowInformationJudgement(judgement: Judgement): Judgement {
   return {
     ...judgement,
@@ -132,6 +155,22 @@ function adjustLowInformationJudgement(judgement: Judgement): Judgement {
     reason: "信息太水，像拿常识糊弄门卫",
   };
 }
+
+function softenPlausibleAssociationJudgement(judgement: Judgement, index: number): Judgement {
+  if (index > 1 || judgement.isSame) return judgement;
+
+  return {
+    ...judgement,
+    isSame: true,
+    confidence: Math.min(Math.max(judgement.confidence, 0.6), 0.72),
+    directionScore: Math.max(judgement.directionScore ?? 0, 58),
+    clueScore: Math.max(judgement.clueScore ?? 0, 50),
+    naturalScore: Math.max(judgement.naturalScore ?? 0, 58),
+    suspicionScore: Math.min(judgement.suspicionScore ?? 100, 58),
+    reason: "有点泛，但确实蹭到答案边上",
+  };
+}
+
 
 function fallbackSetup(count: number) {
   const setup = {
@@ -230,6 +269,7 @@ async function judgePlayer(body: JudgePlayerRequest) {
 
   const usedIndexes = new Set<number>();
   const lowInformationSpeech = isLowInformationSpeech(body.playerSpeech);
+  const plausibleAssociation = hasPlausibleAssociation(body.word, body.playerSpeech);
   const judgements = body.aiNames.map((aiName, index) => {
     const namedIndex = returnedJudgements.findIndex((judgement, candidateIndex) => {
       return !usedIndexes.has(candidateIndex) && judgement.aiName === aiName;
@@ -255,7 +295,10 @@ async function judgePlayer(body: JudgePlayerRequest) {
         suspicionScore: 45,
         reason: "模型未返回该评审",
       };
-      return lowInformationSpeech ? adjustLowInformationJudgement(fallbackJudgement) : fallbackJudgement;
+      if (lowInformationSpeech) return adjustLowInformationJudgement(fallbackJudgement);
+      return plausibleAssociation
+        ? softenPlausibleAssociationJudgement(fallbackJudgement, index)
+        : fallbackJudgement;
     }
 
     const isSame = Boolean(judgement.isSame);
@@ -278,8 +321,9 @@ async function judgePlayer(body: JudgePlayerRequest) {
       suspicionScore: clampScore(judgement.suspicionScore, isSame ? 30 : 72),
       reason,
     };
-    return lowInformationSpeech
-      ? adjustLowInformationJudgement(normalizedJudgement)
+    if (lowInformationSpeech) return adjustLowInformationJudgement(normalizedJudgement);
+    return plausibleAssociation
+      ? softenPlausibleAssociationJudgement(normalizedJudgement, index)
       : normalizedJudgement;
   });
 

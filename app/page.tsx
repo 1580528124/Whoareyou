@@ -98,6 +98,7 @@ type GameState = {
   endedReason: string;
   disguiseScore: number;
   resultTitle: string;
+  resultTags: string[];
   listenedCount: number;
   riskMultiplier: number;
   tokenCalls: TokenCall[];
@@ -207,14 +208,6 @@ function calculateDisguiseScore(game: GameState, judgements: Judgement[], winner
   const riskMultiplier = getRiskMultiplier(listenedCount);
   const guessedRight = game.playerGuess.trim() === game.secretWord;
 
-  if (guessedRight) {
-    return {
-      score: 100,
-      listenedCount,
-      riskMultiplier,
-    };
-  }
-
   const directionScore = getAverageScore(judgements, "directionScore");
   const clueScore = getAverageScore(judgements, "clueScore");
   const naturalScore = getAverageScore(judgements, "naturalScore");
@@ -243,13 +236,41 @@ function getResultTitle(game: GameState, judgements: Judgement[], winner: Winner
   if (winner === "ai" && sameCount === 0) return "一句话自爆";
   if (winner === "ai" && listenedCount >= 3) return "全程露馅";
   if (winner === "ai") return "差点混进去";
-  if (guessedRight && score === 100) return "精准破局";
+  if (guessedRight && score >= 85) return "精准破局";
   if (listenedCount === 1 && score >= 80) return "盲狙成功";
   if (hasGuess && !guessedRight) return "误打误撞大师";
   if (guessedRight && score >= 80) return "精准潜伏者";
   if (sameCount === 3) return "天衣无缝";
   if (score >= 75) return "语言烟雾弹大师";
   return "强行混入";
+}
+
+function getResultTags(game: GameState, judgements: Judgement[], winner: Winner, score: number) {
+  const sameCount = judgements.filter((judgement) => judgement.isSame).length;
+  const suspectedCount = judgements.length - sameCount;
+  const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
+  const guessedRight = game.playerGuess.trim() === game.secretWord;
+  const hasGuess = Boolean(game.playerGuess.trim());
+  const naturalScore = getAverageScore(judgements, "naturalScore");
+  const suspicionScore = getAverageScore(judgements, "suspicionScore");
+  const clueScore = getAverageScore(judgements, "clueScore");
+  const tags: string[] = [];
+
+  if (winner === "player") tags.push("全员放行");
+  if (winner === "ai" && suspectedCount === 1) tags.push("差一票过关");
+  if (winner === "ai" && suspectedCount === 3) tags.push("全员警报");
+  if (listenedCount <= 2) tags.push("少线索出手");
+  if (listenedCount >= 4) tags.push("情报吃满");
+  if (guessedRight) tags.push("猜词命中");
+  if (hasGuess && !guessedRight && winner === "player") tags.push("猜错也能装");
+  if (naturalScore >= 78) tags.push("演技在线");
+  if (clueScore >= 75) tags.push("线索缝合怪");
+  if (suspicionScore <= 30 && winner === "player") tags.push("低可疑体质");
+  if (suspicionScore >= 70) tags.push("可疑气味超标");
+  if (score >= 90) tags.push("高分伪装");
+  if (score < 45) tags.push("当场露馅");
+
+  return Array.from(new Set(tags)).slice(0, 5);
 }
 
 function createGame(): GameState {
@@ -289,6 +310,7 @@ function createGame(): GameState {
     endedReason: "",
     disguiseScore: 0,
     resultTitle: "",
+    resultTags: [],
     listenedCount: 0,
     riskMultiplier: 1,
     tokenCalls: [],
@@ -381,6 +403,7 @@ function buildResult(game: GameState, judgements: Judgement[]) {
   const winner: Winner = differentCount === 0 ? "player" : "ai";
   const scoreResult = calculateDisguiseScore(game, judgements, winner);
   const resultTitle = getResultTitle(game, judgements, winner, scoreResult.score);
+  const resultTags = getResultTags(game, judgements, winner, scoreResult.score);
   const endedReason =
     winner === "player"
       ? "3个AI都认为你是同类"
@@ -405,6 +428,7 @@ function buildResult(game: GameState, judgements: Judgement[]) {
     endedReason,
     disguiseScore: scoreResult.score,
     resultTitle,
+    resultTags,
     listenedCount: scoreResult.listenedCount,
     riskMultiplier: scoreResult.riskMultiplier,
     votes,
@@ -596,6 +620,7 @@ export default function Home() {
         endedReason: result.endedReason,
         disguiseScore: result.disguiseScore,
         resultTitle: result.resultTitle,
+        resultTags: result.resultTags,
         listenedCount: result.listenedCount,
         riskMultiplier: result.riskMultiplier,
         players: withToken.players.map((player) =>
@@ -675,7 +700,7 @@ export default function Home() {
       <section className="topbar">
         <div>
           <p className="eyebrow">WhoAreYou</p>
-          <h1>一句话骗过AI</h1>
+          <h1>你能骗过AI吗</h1>
         </div>
         <div className="topStats">
           <div className="roundBadge">已潜伏 {survivalStreak} 轮</div>
@@ -767,6 +792,13 @@ export default function Home() {
           {game.phase === "result" && (
             <div className="stage result">
               <h2>{game.resultTitle}</h2>
+              {game.resultTags.length > 0 && (
+                <div className="tagList">
+                  {game.resultTags.map((tag) => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </div>
+              )}
               <div className="scoreBoard">
                 <strong>{game.disguiseScore}</strong>
                 <span>伪装分</span>

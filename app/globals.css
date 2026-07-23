@@ -333,6 +333,22 @@ h2 {
   color: var(--muted);
 }
 
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tagList span {
+  border: 1px solid rgba(115, 199, 183, 0.35);
+  border-radius: 999px;
+  background: rgba(115, 199, 183, 0.1);
+  color: var(--accent-2);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .scoreGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
