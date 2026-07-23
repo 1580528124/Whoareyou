@@ -79,14 +79,13 @@ textarea {
   margin: 0 auto;
   padding: 14px 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(220px, 0.55fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
 }
 
 .topbar,
 .sectionHeader,
 .board,
-.timeline,
 .player,
 .log {
   display: grid;
@@ -147,11 +146,6 @@ h2 {
 
 .board {
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
-  min-height: 0;
-}
-
-.timeline {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-height: 0;
 }
 
@@ -422,31 +416,9 @@ h2 {
   padding: 12px;
 }
 
-.compactTimeline .panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
 .judgementPanel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-}
-
-.reviewPanel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
-}
-
-.reviewPanel .players {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-height: none;
-  overflow: visible;
-}
-
-.reviewPanel .player {
-  min-height: 76px;
-  align-content: center;
 }
 
 .tokenCall div {
@@ -485,7 +457,6 @@ h2 {
 
   .topbar,
   .board,
-  .timeline,
   .sectionHeader {
     grid-template-columns: 1fr;
   }

@@ -206,7 +206,9 @@ function calculateDisguiseScore(game: GameState, judgements: Judgement[], winner
   const sameCount = judgements.filter((judgement) => judgement.isSame).length;
   const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
   const riskMultiplier = getRiskMultiplier(listenedCount);
-  const guessedRight = game.playerGuess.trim() === game.secretWord;
+  const guessedRight =
+    game.playerGuess.trim() === game.secretWord ||
+    game.playerSpeech.includes(game.secretWord);
 
   const directionScore = getAverageScore(judgements, "directionScore");
   const clueScore = getAverageScore(judgements, "clueScore");
@@ -230,7 +232,9 @@ function calculateDisguiseScore(game: GameState, judgements: Judgement[], winner
 function getResultTitle(game: GameState, judgements: Judgement[], winner: Winner, score: number) {
   const sameCount = judgements.filter((judgement) => judgement.isSame).length;
   const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
-  const guessedRight = game.playerGuess.trim() === game.secretWord;
+  const guessedRight =
+    game.playerGuess.trim() === game.secretWord ||
+    game.playerSpeech.includes(game.secretWord);
   const hasGuess = Boolean(game.playerGuess.trim());
 
   if (winner === "ai" && sameCount === 0) return "一句话自爆";
@@ -249,7 +253,9 @@ function getResultTags(game: GameState, judgements: Judgement[], winner: Winner,
   const sameCount = judgements.filter((judgement) => judgement.isSame).length;
   const suspectedCount = judgements.length - sameCount;
   const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
-  const guessedRight = game.playerGuess.trim() === game.secretWord;
+  const guessedRight =
+    game.playerGuess.trim() === game.secretWord ||
+    game.playerSpeech.includes(game.secretWord);
   const hasGuess = Boolean(game.playerGuess.trim());
   const naturalScore = getAverageScore(judgements, "naturalScore");
   const suspicionScore = getAverageScore(judgements, "suspicionScore");
@@ -676,25 +682,6 @@ export default function Home() {
     </>
   );
 
-  const aiReviewPanel = (
-    <>
-      <div className="sectionHeader">
-        <div>
-          <p className="eyebrow">AI审查团</p>
-          <h2>三种视角</h2>
-        </div>
-      </div>
-      <div className="players">
-        {game.players.filter((player) => !player.isHuman).map((player) => (
-          <article className={player.alive ? "player" : "player eliminated"} key={player.id}>
-            <strong>{player.name}</strong>
-            <p>{AI_ROLES[player.name]}</p>
-          </article>
-        ))}
-      </div>
-    </>
-  );
-
   return (
     <main className="shell">
       <section className="topbar">
@@ -703,7 +690,7 @@ export default function Home() {
           <h1>你能骗过AI吗</h1>
         </div>
         <div className="topStats">
-          <div className="roundBadge">已潜伏 {survivalStreak} 轮</div>
+          <div className="roundBadge">已成功骗过AI {survivalStreak} 轮</div>
           <div className="tokenBadge">
             Token {game.usage.total_tokens} · 调用 {game.usage.calls} 次 · 输入{" "}
             {game.usage.prompt_tokens} · 输出 {game.usage.completion_tokens}
@@ -826,28 +813,6 @@ export default function Home() {
         </div>
 
         <div className="panel judgementPanel">{aiJudgementPanel}</div>
-      </section>
-
-      <section className="timeline compactTimeline">
-        <div className="panel">
-          <div className="sectionHeader">
-            <div>
-              <p className="eyebrow">线索</p>
-              <h2>已出现发言</h2>
-            </div>
-          </div>
-          <div className="logs">
-            {game.speeches.length === 0 && <p className="empty">AI发言会显示在这里。</p>}
-            {game.speeches.map((speech, index) => (
-              <article key={`${speech.playerId}-${index}`} className="log">
-                <span>{speech.playerName}</span>
-                <p>{speech.text}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel reviewPanel">{aiReviewPanel}</div>
       </section>
     </main>
   );

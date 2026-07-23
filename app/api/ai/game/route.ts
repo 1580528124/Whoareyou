@@ -195,6 +195,23 @@ function strengthenComponentHitJudgement(word: string, speech: string, judgement
   };
 }
 
+function strengthenExactWordHitJudgement(word: string, speech: string, judgement: Judgement): Judgement {
+  const normalizedWord = normalizeText(word);
+  const normalizedSpeech = normalizeText(speech);
+  if (!normalizedWord || !normalizedSpeech.includes(normalizedWord)) return judgement;
+
+  return {
+    ...judgement,
+    isSame: true,
+    confidence: Math.max(judgement.confidence, 0.9),
+    directionScore: Math.max(judgement.directionScore ?? 0, 95),
+    clueScore: Math.max(judgement.clueScore ?? 0, 86),
+    naturalScore: Math.max(judgement.naturalScore ?? 0, 70),
+    suspicionScore: Math.min(judgement.suspicionScore ?? 35, 40),
+    reason: "答案都说出口了，门禁直接开",
+  };
+}
+
 
 function fallbackSetup(count: number) {
   const setup = {
@@ -323,7 +340,11 @@ async function judgePlayer(body: JudgePlayerRequest) {
       const associatedJudgement = plausibleAssociation
         ? softenPlausibleAssociationJudgement(fallbackJudgement, index)
         : fallbackJudgement;
-      return strengthenComponentHitJudgement(body.word, body.playerSpeech, associatedJudgement);
+      return strengthenExactWordHitJudgement(
+        body.word,
+        body.playerSpeech,
+        strengthenComponentHitJudgement(body.word, body.playerSpeech, associatedJudgement),
+      );
     }
 
     const isSame = Boolean(judgement.isSame);
@@ -350,7 +371,11 @@ async function judgePlayer(body: JudgePlayerRequest) {
     const associatedJudgement = plausibleAssociation
       ? softenPlausibleAssociationJudgement(normalizedJudgement, index)
       : normalizedJudgement;
-    return strengthenComponentHitJudgement(body.word, body.playerSpeech, associatedJudgement);
+    return strengthenExactWordHitJudgement(
+      body.word,
+      body.playerSpeech,
+      strengthenComponentHitJudgement(body.word, body.playerSpeech, associatedJudgement),
+    );
   });
 
   return {
