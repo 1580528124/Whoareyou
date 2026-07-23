@@ -10,11 +10,6 @@ type DescriptionSeed = {
   text: string;
 };
 
-type WordSeed = {
-  word: string;
-  seeds: DescriptionSeed[];
-};
-
 type Player = {
   id: number;
   name: string;
@@ -49,7 +44,7 @@ type Usage = {
 type TokenCall = {
   id: string;
   round: number;
-  task: "description" | "judge";
+  task: "setup" | "judge";
   playerId: number;
   playerName: string;
   model: string;
@@ -63,6 +58,11 @@ type Judgement = {
   aiName: string;
   isSame: boolean;
   confidence: number;
+  directionScore?: number;
+  clueScore?: number;
+  naturalScore?: number;
+  suspicionScore?: number;
+  reason?: string;
 };
 
 type RoundRecord = {
@@ -96,6 +96,10 @@ type GameState = {
   judgements: Judgement[];
   winner: Winner | null;
   endedReason: string;
+  disguiseScore: number;
+  resultTitle: string;
+  listenedCount: number;
+  riskMultiplier: number;
   tokenCalls: TokenCall[];
   usage: {
     calls: number;
@@ -105,11 +109,19 @@ type GameState = {
   };
 };
 
-type GenerateDescriptionsResponse = {
+type GenerateSetupResponse = {
+  word?: string;
+  seeds?: DescriptionSeed[];
   descriptions?: string[];
   usage?: Usage;
   model?: string;
   error?: string;
+};
+
+type CompleteGameSetup = GenerateSetupResponse & {
+  word: string;
+  seeds: DescriptionSeed[];
+  descriptions: string[];
 };
 
 type JudgePlayerResponse = {
@@ -122,43 +134,125 @@ type JudgePlayerResponse = {
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 const AI_NAMES = ["林舟", "许墨", "阿澈"];
+const AI_ROLES: Record<string, string> = {
+  林舟: "内容审查员",
+  许墨: "线索审查员",
+  阿澈: "自然度审查员",
+};
 const AI_DESCRIPTION_DELAY_MS = 1700;
-
-const WORD_SEEDS: WordSeed[] = [
-  { word: "西瓜", seeds: [{ side: "操作侧面", text: "买前会敲两下" }, { side: "时间侧面", text: "夏天更常见" }, { side: "后果侧面", text: "切开常分着吃" }] },
-  { word: "牛奶", seeds: [{ side: "时间侧面", text: "早餐常会出现" }, { side: "操作侧面", text: "有人睡前热一下" }, { side: "场景侧面", text: "冰箱里常备着" }] },
-  { word: "手机", seeds: [{ side: "操作侧面", text: "出门前会确认" }, { side: "状态侧面", text: "没电会有点慌" }, { side: "场景侧面", text: "等车时常会看" }] },
-  { word: "面包", seeds: [{ side: "时间侧面", text: "早上常顺手拿" }, { side: "场景侧面", text: "便利店经常见" }, { side: "操作侧面", text: "有时会烤一下" }] },
-  { word: "唇膏", seeds: [{ side: "操作侧面", text: "出门前会涂" }, { side: "时间侧面", text: "天干时常找它" }, { side: "场景侧面", text: "包里常备一个" }] },
-  { word: "高铁", seeds: [{ side: "操作侧面", text: "进站要刷证件" }, { side: "时间侧面", text: "出远门会查班次" }, { side: "状态侧面", text: "路上比较安静" }] },
-  { word: "水煮鱼", seeds: [{ side: "操作侧面", text: "上桌会先夹鱼片" }, { side: "场景侧面", text: "点菜会问能否吃辣" }, { side: "后果侧面", text: "吃完还想加菜" }] },
-  { word: "鱼香肉丝", seeds: [{ side: "场景侧面", text: "点外卖常看见" }, { side: "后果侧面", text: "下饭时容易想到" }, { side: "操作侧面", text: "菜单上常顺手点" }] },
-  { word: "火锅", seeds: [{ side: "现象侧面", text: "会冒热气" }, { side: "操作侧面", text: "配料可以自己选" }, { side: "场景侧面", text: "人多吃着热闹" }] },
-  { word: "勇往直前", seeds: [{ side: "场景侧面", text: "比赛前常用来打气" }, { side: "状态侧面", text: "听着很有冲劲" }, { side: "操作侧面", text: "遇到难事会想起" }] },
-  { word: "福尔摩斯", seeds: [{ side: "场景侧面", text: "提到侦探会想到" }, { side: "操作侧面", text: "看线索就开始推理" }, { side: "状态侧面", text: "案件里总很冷静" }] },
-  { word: "包青天", seeds: [{ side: "场景侧面", text: "冤案里常被提起" }, { side: "状态侧面", text: "说到公正会想到" }, { side: "操作侧面", text: "断案时很有威严" }] },
-  { word: "甄嬛传", seeds: [{ side: "场景侧面", text: "宫斗时常被提起" }, { side: "后果侧面", text: "重刷会发现细节" }, { side: "状态侧面", text: "很多台词很熟" }] },
-  { word: "十面埋伏", seeds: [{ side: "状态侧面", text: "局势让人紧张" }, { side: "场景侧面", text: "被围困时会想到" }, { side: "后果侧面", text: "退路像被堵住" }] },
-  { word: "董永", seeds: [{ side: "场景侧面", text: "民间故事会提起" }, { side: "状态侧面", text: "故事有点苦情" }, { side: "关联侧面", text: "天仙配会想到" }] },
-];
+const RECENT_WORDS_KEY = "whoareyou_recent_words";
+const SURVIVAL_STREAK_KEY = "whoareyou_survival_streak";
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function pickWordSeed() {
-  return WORD_SEEDS[Math.floor(Math.random() * WORD_SEEDS.length)];
-}
-
 function randomDescriptionCount() {
   const roll = Math.random();
-  if (roll < 0.1) return 1;
-  if (roll < 0.55) return 2;
-  return 3;
+  if (roll < 0.3) return 2;
+  if (roll < 0.75) return 3;
+  return 4;
+}
+
+function readRecentWords() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(RECENT_WORDS_KEY) ?? "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((word): word is string => typeof word === "string").slice(0, 30)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecentWord(word: string) {
+  if (typeof window === "undefined" || !word) return;
+
+  const recentWords = readRecentWords().filter((item) => item !== word);
+  window.localStorage.setItem(RECENT_WORDS_KEY, JSON.stringify([word, ...recentWords].slice(0, 30)));
+}
+
+function readSurvivalStreak() {
+  if (typeof window === "undefined") return 0;
+
+  const value = Number(window.localStorage.getItem(SURVIVAL_STREAK_KEY) ?? "0");
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function writeSurvivalStreak(value: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SURVIVAL_STREAK_KEY, String(Math.max(0, Math.floor(value))));
+}
+
+function getRiskMultiplier(listenedCount: number) {
+  if (listenedCount <= 2) return 1.15;
+  if (listenedCount === 3) return 1;
+  return 0.85;
+}
+
+function getAverageScore(judgements: Judgement[], key: keyof Judgement) {
+  if (judgements.length === 0) return 0;
+  const total = judgements.reduce((sum, judgement) => {
+    const value = judgement[key];
+    return sum + (typeof value === "number" ? value : 0);
+  }, 0);
+  return total / judgements.length;
+}
+
+function calculateDisguiseScore(game: GameState, judgements: Judgement[], winner: Winner) {
+  const sameCount = judgements.filter((judgement) => judgement.isSame).length;
+  const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
+  const riskMultiplier = getRiskMultiplier(listenedCount);
+  const guessedRight = game.playerGuess.trim() === game.secretWord;
+
+  if (guessedRight) {
+    return {
+      score: 100,
+      listenedCount,
+      riskMultiplier,
+    };
+  }
+
+  const directionScore = getAverageScore(judgements, "directionScore");
+  const clueScore = getAverageScore(judgements, "clueScore");
+  const naturalScore = getAverageScore(judgements, "naturalScore");
+  const suspicionScore = getAverageScore(judgements, "suspicionScore");
+  const passScore = (sameCount / Math.max(1, judgements.length)) * 34;
+  const qualityScore = directionScore * 0.18 + clueScore * 0.16 + naturalScore * 0.18;
+  const suspicionPenalty = suspicionScore * 0.2;
+  const wrongGuessBonus = winner === "player" && game.playerGuess.trim() && !guessedRight ? 5 : 0;
+  const resultBonus = winner === "player" ? 8 : 0;
+  const rawScore = (passScore + qualityScore - suspicionPenalty + resultBonus) * riskMultiplier + wrongGuessBonus;
+  const score = Math.round(Math.max(0, Math.min(98, rawScore)));
+
+  return {
+    score,
+    listenedCount,
+    riskMultiplier,
+  };
+}
+
+function getResultTitle(game: GameState, judgements: Judgement[], winner: Winner, score: number) {
+  const sameCount = judgements.filter((judgement) => judgement.isSame).length;
+  const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
+  const guessedRight = game.playerGuess.trim() === game.secretWord;
+  const hasGuess = Boolean(game.playerGuess.trim());
+
+  if (winner === "ai" && sameCount === 0) return "一句话自爆";
+  if (winner === "ai" && listenedCount >= 3) return "全程露馅";
+  if (winner === "ai") return "差点混进去";
+  if (guessedRight && score === 100) return "精准破局";
+  if (listenedCount === 1 && score >= 80) return "盲狙成功";
+  if (hasGuess && !guessedRight) return "误打误撞大师";
+  if (guessedRight && score >= 80) return "精准潜伏者";
+  if (sameCount === 3) return "天衣无缝";
+  if (score >= 75) return "语言烟雾弹大师";
+  return "强行混入";
 }
 
 function createGame(): GameState {
-  const wordSeed = pickWordSeed();
   const descriptionTargetCount = randomDescriptionCount();
   const players: Player[] = [
     { id: 0, name: "你", isHuman: true, role: "undercover", word: "", alive: true },
@@ -167,7 +261,7 @@ function createGame(): GameState {
       name,
       isHuman: false,
       role: "civilian" as const,
-      word: wordSeed.word,
+      word: "",
       alive: true,
     })),
   ];
@@ -177,10 +271,10 @@ function createGame(): GameState {
     phase: "setup",
     round: 1,
     maxRounds: 1,
-    secretWord: wordSeed.word,
-    civilianWord: wordSeed.word,
-    undercoverWord: "无词",
-    seeds: wordSeed.seeds,
+    secretWord: "",
+    civilianWord: "",
+    undercoverWord: "",
+    seeds: [],
     generatedDescriptions: [],
     descriptionTargetCount,
     visibleDescriptionCount: 0,
@@ -193,6 +287,10 @@ function createGame(): GameState {
     judgements: [],
     winner: null,
     endedReason: "",
+    disguiseScore: 0,
+    resultTitle: "",
+    listenedCount: 0,
+    riskMultiplier: 1,
     tokenCalls: [],
     usage: {
       calls: 0,
@@ -236,20 +334,22 @@ function addTokenCall(
   };
 }
 
-async function requestDescriptions(game: GameState) {
+async function requestSetup(game: GameState): Promise<CompleteGameSetup> {
   const response = await fetch("/api/ai/game", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      task: "generateDescriptions",
-      word: game.secretWord,
-      seeds: game.seeds,
+      task: "generateSetup",
       count: game.descriptionTargetCount,
+      recentWords: readRecentWords(),
     }),
   });
-  const data = (await response.json()) as GenerateDescriptionsResponse;
-  if (!response.ok || data.error) throw new Error(data.error ?? "生成描述失败");
-  return data;
+  const data = (await response.json()) as GenerateSetupResponse;
+  if (!response.ok || data.error) throw new Error(data.error ?? "生成开局失败");
+  if (!data.word || !data.descriptions || !data.seeds) {
+    throw new Error("开局数据不完整");
+  }
+  return data as CompleteGameSetup;
 }
 
 async function requestJudgement(game: GameState) {
@@ -278,15 +378,15 @@ async function requestJudgement(game: GameState) {
 function buildResult(game: GameState, judgements: Judgement[]) {
   const sameCount = judgements.filter((judgement) => judgement.isSame).length;
   const differentCount = judgements.length - sameCount;
-  const winner: Winner = sameCount >= 2 ? "player" : "ai";
+  const winner: Winner = differentCount === 0 ? "player" : "ai";
+  const scoreResult = calculateDisguiseScore(game, judgements, winner);
+  const resultTitle = getResultTitle(game, judgements, winner, scoreResult.score);
   const endedReason =
     winner === "player"
-      ? sameCount === 3
-        ? "3个AI都认为你是同类"
-        : "你成功混入，但有1个AI产生了怀疑"
+      ? "3个AI都认为你是同类"
       : differentCount === 3
         ? "3个AI都识破了你的伪装"
-        : "2个AI认为你是异类";
+        : `${differentCount}个AI产生了怀疑，你被识破了`;
   const votes: Vote[] = judgements.map((judgement) => {
     const voter = game.players.find((player) => player.name === judgement.aiName) ?? game.players[1];
     const target = judgement.isSame ? voter : game.players[0];
@@ -303,6 +403,10 @@ function buildResult(game: GameState, judgements: Judgement[]) {
   return {
     winner,
     endedReason,
+    disguiseScore: scoreResult.score,
+    resultTitle,
+    listenedCount: scoreResult.listenedCount,
+    riskMultiplier: scoreResult.riskMultiplier,
     votes,
     record: {
       round: 1,
@@ -329,12 +433,17 @@ export default function Home() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [savedGameId, setSavedGameId] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [survivalStreak, setSurvivalStreak] = useState(0);
 
   const visibleSpeeches = useMemo(
     () => game.speeches.filter((speech) => speech.playerId !== 0),
     [game.speeches],
   );
   const canSpeak = playerSpeech.trim().length >= 4 && !isBusy;
+
+  useEffect(() => {
+    setSurvivalStreak(readSurvivalStreak());
+  }, []);
 
   useEffect(() => {
     if (game.phase !== "result" || saveStatus !== "idle") return;
@@ -401,25 +510,29 @@ export default function Home() {
     setProgress("正在生成本局线索");
 
     try {
-      const data = await requestDescriptions(game);
-      const descriptions = (data.descriptions ?? game.seeds.map((seed) => seed.text)).slice(
-        0,
-        game.descriptionTargetCount,
-      );
+      const data = await requestSetup(game);
+      const descriptions = data.descriptions.slice(0, game.descriptionTargetCount);
+      rememberRecentWord(data.word);
       const nextGame = addTokenCall(
         {
           ...game,
           phase: "listen",
+          secretWord: data.word,
+          civilianWord: data.word,
+          seeds: data.seeds,
           generatedDescriptions: descriptions,
+          players: game.players.map((player) =>
+            player.isHuman ? player : { ...player, word: data.word },
+          ),
         },
         {
           round: 1,
-          task: "description",
+          task: "setup",
           playerId: 1,
           playerName: "系统",
           model: data.model ?? "unknown",
           usage: data.usage,
-          output: descriptions.join(" / "),
+          output: `${data.word}：${descriptions.join(" / ")}`,
         },
       );
       setGame(nextGame);
@@ -460,6 +573,7 @@ export default function Home() {
       const data = await requestJudgement(gameWithSpeech);
       const judgements = data.judgements ?? [];
       const result = buildResult(gameWithSpeech, judgements);
+      const nextSurvivalStreak = result.winner === "player" ? survivalStreak + 1 : 0;
       const withToken = addTokenCall(gameWithSpeech, {
         round: 1,
         task: "judge",
@@ -469,6 +583,8 @@ export default function Home() {
         usage: data.usage,
         output: JSON.stringify(judgements),
       });
+      writeSurvivalStreak(nextSurvivalStreak);
+      setSurvivalStreak(nextSurvivalStreak);
 
       setGame({
         ...withToken,
@@ -478,6 +594,10 @@ export default function Home() {
         judgements,
         winner: result.winner,
         endedReason: result.endedReason,
+        disguiseScore: result.disguiseScore,
+        resultTitle: result.resultTitle,
+        listenedCount: result.listenedCount,
+        riskMultiplier: result.riskMultiplier,
         players: withToken.players.map((player) =>
           player.id === 0 ? { ...player, alive: result.winner === "player" } : player,
         ),
@@ -502,14 +622,68 @@ export default function Home() {
     setSaveError("");
   }
 
+  const aiJudgementPanel = (
+    <>
+      <div className="sectionHeader">
+        <div>
+          <p className="eyebrow">结果</p>
+          <h2>AI判断</h2>
+        </div>
+      </div>
+      <div className="logs">
+        {game.judgements.length === 0 && <p className="empty">结算后会显示AI判断。</p>}
+        {game.judgements.map((judgement) => (
+          <article key={judgement.aiName} className="log">
+            <span>{judgement.aiName}</span>
+            <small>{AI_ROLES[judgement.aiName]}</small>
+            <p>{judgement.isSame ? "认为你是同类" : "认为你是异类"}</p>
+            {judgement.reason && <p>{judgement.reason}</p>}
+            <div className="scoreGrid">
+              <span>方向 {judgement.directionScore ?? 0}</span>
+              <span>线索 {judgement.clueScore ?? 0}</span>
+              <span>自然 {judgement.naturalScore ?? 0}</span>
+              <span>可疑 {judgement.suspicionScore ?? 0}</span>
+            </div>
+            <small>置信度 {Math.round(judgement.confidence * 100)}%</small>
+          </article>
+        ))}
+      </div>
+    </>
+  );
+
+  const aiReviewPanel = (
+    <>
+      <div className="sectionHeader">
+        <div>
+          <p className="eyebrow">AI审查团</p>
+          <h2>三种视角</h2>
+        </div>
+      </div>
+      <div className="players">
+        {game.players.filter((player) => !player.isHuman).map((player) => (
+          <article className={player.alive ? "player" : "player eliminated"} key={player.id}>
+            <strong>{player.name}</strong>
+            <p>{AI_ROLES[player.name]}</p>
+          </article>
+        ))}
+      </div>
+    </>
+  );
+
   return (
     <main className="shell">
       <section className="topbar">
         <div>
           <p className="eyebrow">WhoAreYou</p>
-          <h1>我是白板</h1>
+          <h1>一句话骗过AI</h1>
         </div>
-        <div className="roundBadge">单局伪装挑战</div>
+        <div className="topStats">
+          <div className="roundBadge">已潜伏 {survivalStreak} 轮</div>
+          <div className="tokenBadge">
+            Token {game.usage.total_tokens} · 调用 {game.usage.calls} 次 · 输入{" "}
+            {game.usage.prompt_tokens} · 输出 {game.usage.completion_tokens}
+          </div>
+        </div>
       </section>
 
       <section className="board">
@@ -527,16 +701,16 @@ export default function Home() {
 
           {game.phase === "setup" && (
             <div className="stage">
-              <p>你没有词。AI们知道同一个核心词，你要通过它们的描述感知方向，并伪装成同类。</p>
+              <p>AI知道答案，你不知道。听几条线索后，用一句话假装你也知道。</p>
               <button disabled={isBusy} onClick={startGame}>
-                {isBusy ? "准备中..." : "开始聆听"}
+                {isBusy ? "准备中..." : "开始挑战"}
               </button>
             </div>
           )}
 
           {game.phase === "listen" && (
             <div className="stage">
-              <p>AI会陆续发言。你不知道一共有几条，可以随时结束聆听。</p>
+              <p>线索越少，骗过AI后的分数越高。你不知道一共有几条，可以随时出手。</p>
               <div className="roundSpeeches">
                 {visibleSpeeches.map((speech) => (
                   <article className="roundSpeech" key={`${speech.playerId}-${speech.text}`}>
@@ -558,7 +732,7 @@ export default function Home() {
 
           {game.phase === "speak" && (
             <div className="stage">
-              <p>根据已经听到的方向，写一句像同类会说的话。</p>
+              <p>写一句像知道答案的人会说的话。猜词可填可不填，猜错但骗过AI更有意思。</p>
               <div className="roundSpeeches">
                 {visibleSpeeches.map((speech) => (
                   <article className="roundSpeech" key={`${speech.playerId}-${speech.text}`}>
@@ -592,11 +766,23 @@ export default function Home() {
 
           {game.phase === "result" && (
             <div className="stage result">
-              <h2>{game.winner === "player" ? "你成功融入了" : "你被识破了"}</h2>
+              <h2>{game.resultTitle}</h2>
+              <div className="scoreBoard">
+                <strong>{game.disguiseScore}</strong>
+                <span>伪装分</span>
+              </div>
               <p>{game.endedReason}</p>
-              <p>AI们在说的是：{game.secretWord}</p>
+              <p>
+                通过审查 {game.judgements.filter((judgement) => judgement.isSame).length}/
+                {AI_NAMES.length} · 被怀疑{" "}
+                {game.judgements.filter((judgement) => !judgement.isSame).length}
+              </p>
+              <p>
+                听了 {game.listenedCount} 条线索 · 倍率 x{game.riskMultiplier.toFixed(2)}
+              </p>
+              <p>本局答案：{game.secretWord}</p>
               <p>你的猜测：{game.playerGuess || "未填写"}</p>
-              <p>你的发言：{game.playerSpeech}</p>
+              <p>伪装句：{game.playerSpeech}</p>
               <p>
                 {saveStatus === "saving" && "正在保存本局..."}
                 {saveStatus === "saved" && `本局已保存：${savedGameId}`}
@@ -607,58 +793,7 @@ export default function Home() {
           )}
         </div>
 
-        <div className="panel">
-          <div className="sectionHeader">
-            <div>
-              <p className="eyebrow">AI判断</p>
-              <h2>审判席</h2>
-            </div>
-          </div>
-          <div className="players">
-            {game.players.map((player) => (
-              <article className={player.alive ? "player" : "player eliminated"} key={player.id}>
-                <strong>{player.name}</strong>
-                <p>
-                  {game.phase === "result"
-                    ? player.id === 0
-                      ? player.alive
-                        ? "存活"
-                        : "被识破"
-                      : "同词AI"
-                    : player.id === 0
-                      ? "白板"
-                      : "观察中"}
-                </p>
-              </article>
-            ))}
-          </div>
-
-          <div className="usageBox">
-            <p className="eyebrow">Token</p>
-            <strong>{game.usage.total_tokens}</strong>
-            <span>
-              调用 {game.usage.calls} 次 · 输入 {game.usage.prompt_tokens} · 输出{" "}
-              {game.usage.completion_tokens}
-            </span>
-          </div>
-
-          <div className="tokenList">
-            <p className="eyebrow">调用明细</p>
-            {game.tokenCalls.length === 0 && <span className="empty">AI调用后会记录在这里。</span>}
-            {game.tokenCalls.map((call) => (
-              <article className="tokenCall" key={call.id}>
-                <div>
-                  <strong>{call.task === "description" ? "生成描述" : "批量判断"}</strong>
-                  <span>{call.model}</span>
-                </div>
-                <p>{call.output}</p>
-                <small>
-                  输入 {call.prompt_tokens} · 输出 {call.completion_tokens} · 总计 {call.total_tokens}
-                </small>
-              </article>
-            ))}
-          </div>
-        </div>
+        <div className="panel judgementPanel">{aiJudgementPanel}</div>
       </section>
 
       <section className="timeline compactTimeline">
@@ -680,24 +815,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="panel">
-          <div className="sectionHeader">
-            <div>
-              <p className="eyebrow">结果</p>
-              <h2>AI判断</h2>
-            </div>
-          </div>
-          <div className="logs">
-            {game.judgements.length === 0 && <p className="empty">结算后会显示AI判断。</p>}
-            {game.judgements.map((judgement) => (
-              <article key={judgement.aiName} className="log">
-                <span>{judgement.aiName}</span>
-                <p>{judgement.isSame ? "认为你是同类" : "认为你是异类"}</p>
-                <small>置信度 {Math.round(judgement.confidence * 100)}%</small>
-              </article>
-            ))}
-          </div>
-        </div>
+        <div className="panel reviewPanel">{aiReviewPanel}</div>
       </section>
     </main>
   );

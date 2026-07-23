@@ -79,7 +79,7 @@ textarea {
   margin: 0 auto;
   padding: 14px 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) minmax(160px, 0.45fr);
+  grid-template-rows: auto minmax(0, 1fr) minmax(220px, 0.55fr);
   gap: 12px;
 }
 
@@ -96,6 +96,13 @@ textarea {
 .topbar {
   grid-template-columns: 1fr auto;
   align-items: end;
+}
+
+.topStats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .eyebrow {
@@ -127,6 +134,15 @@ h2 {
   border-radius: 999px;
   color: var(--muted);
   padding: 10px 14px;
+}
+
+.tokenBadge {
+  border: 1px solid rgba(115, 199, 183, 0.35);
+  border-radius: 999px;
+  color: var(--accent-2);
+  padding: 10px 14px;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .board {
@@ -296,6 +312,44 @@ h2 {
   font-size: 30px;
 }
 
+.scoreBoard {
+  display: grid;
+  width: fit-content;
+  min-width: 112px;
+  border: 1px solid rgba(240, 179, 95, 0.45);
+  border-radius: 8px;
+  background: rgba(240, 179, 95, 0.12);
+  padding: 12px 16px;
+}
+
+.scoreBoard strong {
+  color: var(--accent);
+  font-size: 38px;
+  line-height: 1;
+}
+
+.scoreBoard span {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.scoreGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.scoreGrid span {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111316;
+  color: var(--muted);
+  padding: 6px 8px;
+  font-size: 12px;
+  text-align: center;
+}
+
 .errorText {
   margin-top: 18px;
   border: 1px solid rgba(235, 106, 103, 0.45);
@@ -355,6 +409,28 @@ h2 {
 .compactTimeline .panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+}
+
+.judgementPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.reviewPanel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.reviewPanel .players {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-height: none;
+  overflow: visible;
+}
+
+.reviewPanel .player {
+  min-height: 76px;
+  align-content: center;
 }
 
 .tokenCall div {

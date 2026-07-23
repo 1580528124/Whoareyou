@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Game {
+  id               String    @id @default(cuid())
+  createdAt        DateTime  @default(now()) @map("created_at")
+  endedAt          DateTime? @map("ended_at")
+  status           String
+  civilianWord     String    @map("civilian_word")
+  undercoverWord   String    @map("undercover_word")
+  winner           String?
+  endedReason      String?   @map("ended_reason")
+  maxRounds        Int       @default(3) @map("max_rounds")
+  totalCalls       Int       @default(0) @map("total_calls")
+  promptTokens     Int       @default(0) @map("prompt_tokens")
+  completionTokens Int       @default(0) @map("completion_tokens")
+  totalTokens      Int       @default(0) @map("total_tokens")
+  snapshotJson     Json?     @map("snapshot_json")
+
+  players  Player[]
+  rounds   Round[]
+  speeches Speech[]
+  votes    Vote[]
+  aiCalls  AiCall[]
+
+  @@index([createdAt])
+  @@index([status])
+  @@index([winner])
+  @@map("games")
+}
+
+model Player {
+  id              String  @id @default(cuid())
+  gameId          String  @map("game_id")
+  playerIndex     Int     @map("player_index")
+  name            String
+  isHuman         Boolean @map("is_human")
+  role            String
+  word            String
+  alive           Boolean @default(true)
+  eliminatedRound Int?    @map("eliminated_round")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  speeches  Speech[]
+  votesCast Vote[]   @relation("Voter")
+  votesGot  Vote[]   @relation("Target")
+  aiCalls   AiCall[]
+
+  @@unique([gameId, playerIndex])
+  @@index([gameId])
+  @@index([role])
+  @@map("players")
+}
+
+model Round {
+  id                 String  @id @default(cuid())
+  gameId             String  @map("game_id")
+  roundNumber        Int     @map("round_number")
+  speechOrderJson    Json    @map("speech_order_json")
+  status             String
+  tied               Boolean @default(false)
+  eliminatedPlayerId String? @map("eliminated_player_id")
+  voteCountsJson     Json?   @map("vote_counts_json")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  speeches Speech[]
+  votes    Vote[]
+  aiCalls  AiCall[]
+
+  @@unique([gameId, roundNumber])
+  @@index([gameId])
+  @@map("rounds")
+}
+
+model Speech {
+  id          String   @id @default(cuid())
+  gameId      String   @map("game_id")
+  roundId     String   @map("round_id")
+  roundNumber Int      @map("round_number")
+  playerId    String   @map("player_id")
+  playerName  String   @map("player_name")
+  position    Int
+  text        String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  round  Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, roundNumber])
+  @@index([roundId])
+  @@index([playerId])
+  @@map("speeches")
+}
+
+model Vote {
+  id             String   @id @default(cuid())
+  gameId         String   @map("game_id")
+  roundId        String   @map("round_id")
+  roundNumber    Int      @map("round_number")
+  voterPlayerId  String   @map("voter_player_id")
+  voterName      String   @map("voter_name")
+  targetPlayerId String   @map("target_player_id")
+  targetName     String   @map("target_name")
+  rawOutput      String?  @map("raw_output")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  round  Round  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  voter  Player @relation("Voter", fields: [voterPlayerId], references: [id], onDelete: Cascade)
+  target Player @relation("Target", fields: [targetPlayerId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, roundNumber])
+  @@index([roundId])
+  @@index([voterPlayerId])
+  @@index([targetPlayerId])
+  @@map("votes")
+}
+
+model AiCall {
+  id               String   @id @default(cuid())
+  gameId           String   @map("game_id")
+  roundId          String?  @map("round_id")
+  roundNumber      Int      @map("round_number")
+  task             String
+  playerId         String   @map("player_id")
+  playerName       String   @map("player_name")
+  model            String
+  promptTokens     Int      @map("prompt_tokens")
+  completionTokens Int      @map("completion_tokens")
+  totalTokens      Int      @map("total_tokens")
+  inputUnitPrice   Decimal? @map("input_unit_price") @db.Decimal(12, 6)
+  outputUnitPrice  Decimal? @map("output_unit_price") @db.Decimal(12, 6)
+  estimatedCost    Decimal? @map("estimated_cost") @db.Decimal(12, 6)
+  output           String
+  latencyMs        Int?     @map("latency_ms")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  round  Round? @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, roundNumber])
+  @@index([roundId])
+  @@index([playerId])
+  @@index([task])
+  @@index([model])
+  @@map("ai_calls")
+}

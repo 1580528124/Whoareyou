@@ -11,6 +11,7 @@ export type BailianUsage = {
 
 type BailianChatOptions = {
   model?: string;
+  maxTokens?: number;
 };
 
 type ChatCompletionChoice = {
@@ -55,7 +56,7 @@ export async function callBailianChat(
         model,
         messages,
         temperature: 0.7,
-        max_tokens: 180,
+        max_tokens: options.maxTokens ?? 700,
         enable_thinking: enableThinking,
       }),
     });
