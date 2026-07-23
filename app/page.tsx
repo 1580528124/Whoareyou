@@ -137,7 +137,7 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
 const AI_NAMES = ["林舟", "许墨", "阿澈"];
 const AI_ROLES: Record<string, string> = {
   林舟: "内容审查员",
-  许墨: "线索审查员",
+  许墨: "闭环审查员",
   阿澈: "自然度审查员",
 };
 const AI_DESCRIPTION_DELAY_MS = 1700;
@@ -665,7 +665,7 @@ export default function Home() {
             {judgement.reason && <p>{judgement.reason}</p>}
             <div className="scoreGrid">
               <span>方向 {judgement.directionScore ?? 0}</span>
-              <span>线索 {judgement.clueScore ?? 0}</span>
+              <span>闭环 {judgement.clueScore ?? 0}</span>
               <span>自然 {judgement.naturalScore ?? 0}</span>
               <span>可疑 {judgement.suspicionScore ?? 0}</span>
             </div>

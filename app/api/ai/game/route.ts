@@ -136,6 +136,10 @@ function hasPlausibleAssociation(word: string, speech: string) {
       words: ["剧本杀", "密室逃脱", "狼人杀"],
       patterns: [/约局|身份|推理|复盘|朋友|线索|凶手/],
     },
+    {
+      words: ["奶茶"],
+      patterns: [/奶|茶|饮品|甜度|加冰|冰块|珍珠|椰果|外卖|杯装|吸管/],
+    },
   ];
 
   return associationRules.some((rule) => {
@@ -168,6 +172,26 @@ function softenPlausibleAssociationJudgement(judgement: Judgement, index: number
     naturalScore: Math.max(judgement.naturalScore ?? 0, 58),
     suspicionScore: Math.min(judgement.suspicionScore ?? 100, 58),
     reason: "有点泛，但确实蹭到答案边上",
+  };
+}
+
+function strengthenComponentHitJudgement(word: string, speech: string, judgement: Judgement): Judgement {
+  const normalizedWord = normalizeText(word);
+  const normalizedSpeech = normalizeText(speech);
+  const componentHit =
+    normalizedWord === "奶茶" && /奶/.test(normalizedSpeech) && /茶/.test(normalizedSpeech);
+
+  if (!componentHit) return judgement;
+
+  return {
+    ...judgement,
+    isSame: true,
+    confidence: Math.max(judgement.confidence, 0.78),
+    directionScore: Math.max(judgement.directionScore ?? 0, 82),
+    clueScore: Math.max(judgement.clueScore ?? 0, 62),
+    naturalScore: Math.max(judgement.naturalScore ?? 0, 68),
+    suspicionScore: Math.max(Math.min(judgement.suspicionScore ?? 45, 55), 38),
+    reason: "奶和茶都点名了，太像自己人",
   };
 }
 
@@ -296,9 +320,10 @@ async function judgePlayer(body: JudgePlayerRequest) {
         reason: "模型未返回该评审",
       };
       if (lowInformationSpeech) return adjustLowInformationJudgement(fallbackJudgement);
-      return plausibleAssociation
+      const associatedJudgement = plausibleAssociation
         ? softenPlausibleAssociationJudgement(fallbackJudgement, index)
         : fallbackJudgement;
+      return strengthenComponentHitJudgement(body.word, body.playerSpeech, associatedJudgement);
     }
 
     const isSame = Boolean(judgement.isSame);
@@ -322,9 +347,10 @@ async function judgePlayer(body: JudgePlayerRequest) {
       reason,
     };
     if (lowInformationSpeech) return adjustLowInformationJudgement(normalizedJudgement);
-    return plausibleAssociation
+    const associatedJudgement = plausibleAssociation
       ? softenPlausibleAssociationJudgement(normalizedJudgement, index)
       : normalizedJudgement;
+    return strengthenComponentHitJudgement(body.word, body.playerSpeech, associatedJudgement);
   });
 
   return {
