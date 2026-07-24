@@ -22,7 +22,30 @@ type BuildJudgementPromptInput = {
     playerName: string;
     text: string;
   }[];
+  selectedIntel?: {
+    type: string;
+    title: string;
+    text: string;
+  };
+  persona?: string;
   playerGuess: string;
+  playerSpeech: string;
+  followupQuestion?: string;
+  followupAnswer?: string;
+};
+
+type BuildFollowupPromptInput = {
+  word: string;
+  aiDescriptions: {
+    playerName: string;
+    text: string;
+  }[];
+  selectedIntel?: {
+    type: string;
+    title: string;
+    text: string;
+  };
+  persona?: string;
   playerSpeech: string;
 };
 
@@ -78,6 +101,14 @@ AI线索要求：
 10. 这些线索会由3个AI轮流说出，即使生成4条，也要让第4条像自然补充，而不是总结答案
 11. 高难度时，优先描述外围场景、使用后果、旁观者反应、出现时机，不要描述定义、典型功能或核心组成
 
+情报卡要求：
+1. 必须生成3张情报卡，给玩家偷看
+2. 三张情报卡类型必须互不相同，可从 场景情报、行为情报、感受情报、危险情报 中选择
+3. 情报卡不能直接出现核心词
+4. 情报卡比AI线索更有用，但仍不能直接暴露答案
+5. 危险情报应该提醒玩家避开2到4个太直白的方向或词，但不要直接写“答案是某某”
+6. 每张情报卡 text 去除标点后控制在8到18个汉字
+
 只输出JSON，不要输出解释。
 JSON格式：
 {
@@ -87,16 +118,56 @@ JSON格式：
     {"side":"操作侧面","text":"短句"},
     {"side":"场景侧面","text":"短句"}
   ],
-  "descriptions": ["线索1","线索2"]
+  "descriptions": ["线索1","线索2"],
+  "intelOptions": [
+    {"type":"场景情报","title":"可以偷看的短标题","text":"情报内容"},
+    {"type":"行为情报","title":"可以偷看的短标题","text":"情报内容"},
+    {"type":"危险情报","title":"可以偷看的短标题","text":"情报内容"}
+  ]
 }`;
+}
+
+export function buildFollowupPrompt({
+  word,
+  aiDescriptions,
+  selectedIntel,
+  persona,
+  playerSpeech,
+}: BuildFollowupPromptInput) {
+  return `你是语言伪装游戏里的AI审查员。
+核心词：${word}
+
+AI桌面线索：
+${aiDescriptions.map((description) => `${description.playerName}：${description.text}`).join("\n")}
+
+玩家偷看的情报：${selectedIntel ? `${selectedIntel.type}：${selectedIntel.text}` : "无"}
+玩家伪装人设：${persona || "未选择"}
+玩家第一句：${playerSpeech}
+
+请生成一句AI追问，逼玩家继续圆谎。
+要求：
+1. 追问不能直接问“答案是什么”
+2. 不能出现核心词
+3. 不能直接揭露玩家偷看的情报
+4. 可以是具体化追问、场景追问、对照追问或陷阱追问
+5. 长度控制在8到18个汉字
+6. 语气像审查员，短促、有压力，但不要恐怖
+
+只输出JSON，不要解释。
+JSON格式：
+{"question":"追问内容"}`;
 }
 
 export function buildJudgementPrompt({
   word,
   aiNames,
   aiDescriptions,
+  selectedIntel,
+  persona,
   playerGuess,
   playerSpeech,
+  followupQuestion,
+  followupAnswer,
 }: BuildJudgementPromptInput) {
   return `你是语言伪装游戏中的AI评审。
 核心词：${word}
@@ -105,13 +176,17 @@ AI已经出现的描述：
 ${aiDescriptions.map((description) => `${description.playerName}：${description.text}`).join("\n")}
 
 玩家猜测的词：${playerGuess.trim() ? playerGuess.trim() : "玩家没有填写"}
-玩家发言：${playerSpeech}
+玩家偷看的情报：${selectedIntel ? `${selectedIntel.type}：${selectedIntel.text}` : "无"}
+玩家伪装人设：${persona || "未选择"}
+玩家第一句：${playerSpeech}
+AI追问：${followupQuestion || "无"}
+玩家补答：${followupAnswer || "无"}
 
 请判断玩家是否像是知道核心词的人。
 判断优先级：
 1. 第一优先级：玩家发言的内容方向是否贴近核心词的常见场景、行为、用途、后果或关联
 2. 第二优先级：玩家发言的信息密度是否合适，既没有直接暴露答案，也不是完全空话
-3. 第三优先级：玩家发言作为一个新方向，能否和已经出现的AI线索一起围绕核心词形成闭环
+3. 第三优先级：玩家第一句和补答作为新方向，能否和AI线索、偷看的情报一起围绕核心词形成闭环
 4. 语气、句型、是否像临场编造只能作为辅助参考，不能作为主要判断理由
 5. 除非玩家发言完全没有内容方向，否则不要只因为“语气刻意”“句型奇怪”就判为异类
 6. 如果玩家只说类别、常识或废话，例如“能吃”“很好用”“挺常见”“大家都知道”“是个东西”，这属于低信息发言
@@ -124,6 +199,8 @@ ${aiDescriptions.map((description) => `${description.playerName}：${description
 13. 如果玩家发言命中了核心词的组成部分、材料或强关联物，例如核心词是“奶茶”，玩家说“和奶与茶有关”，这是强相关，directionScore 应该较高，通常应判为同类；但如果过于接近答案，可以提高 suspicionScore
 14. 如果玩家发言直接包含核心词本身，例如核心词是“猫咖”，玩家说“这里是猫咖吧”，这表示答案命中，必须判为同类，directionScore 应该很高
 15. 只有玩家发言和核心词几乎没有关系，或只是“能吃、能用、挺常见”这种无对象常识，才可以让3个AI全部识破
+16. 如果玩家补答成功接住追问，并且没有踩到太直白的危险方向，应提高自然度和闭环分
+17. 如果玩家第一句和补答互相矛盾，或补答明显回避追问，应提高可疑度
 
 请分别模拟这3个AI评审独立判断：
 1. ${aiNames[0]}：内容审查员，重点看玩家发言的内容方向是否贴近核心词

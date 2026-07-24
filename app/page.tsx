@@ -2,11 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type Phase = "setup" | "listen" | "speak" | "judging" | "result";
+type Phase = "setup" | "intel" | "speak" | "followup" | "judging" | "result";
 type Winner = "player" | "ai";
 
 type DescriptionSeed = {
   side: string;
+  text: string;
+};
+
+type IntelOption = {
+  type: string;
+  title: string;
   text: string;
 };
 
@@ -44,7 +50,7 @@ type Usage = {
 type TokenCall = {
   id: string;
   round: number;
-  task: "setup" | "judge";
+  task: "setup" | "followup" | "judge";
   playerId: number;
   playerName: string;
   model: string;
@@ -84,6 +90,9 @@ type GameState = {
   civilianWord: string;
   undercoverWord: string;
   seeds: DescriptionSeed[];
+  intelOptions: IntelOption[];
+  selectedIntel: IntelOption | null;
+  persona: string;
   generatedDescriptions: string[];
   descriptionTargetCount: number;
   visibleDescriptionCount: number;
@@ -93,6 +102,8 @@ type GameState = {
   records: RoundRecord[];
   playerGuess: string;
   playerSpeech: string;
+  followupQuestion: string;
+  followupAnswer: string;
   judgements: Judgement[];
   winner: Winner | null;
   endedReason: string;
@@ -114,6 +125,7 @@ type GenerateSetupResponse = {
   word?: string;
   seeds?: DescriptionSeed[];
   descriptions?: string[];
+  intelOptions?: IntelOption[];
   difficulty?: string;
   difficultyLevel?: number;
   usage?: Usage;
@@ -125,6 +137,14 @@ type CompleteGameSetup = GenerateSetupResponse & {
   word: string;
   seeds: DescriptionSeed[];
   descriptions: string[];
+  intelOptions: IntelOption[];
+};
+
+type GenerateFollowupResponse = {
+  question?: string;
+  usage?: Usage;
+  model?: string;
+  error?: string;
 };
 
 type JudgePlayerResponse = {
@@ -145,6 +165,20 @@ const AI_ROLES: Record<string, string> = {
 const AI_DESCRIPTION_DELAY_MS = 1700;
 const RECENT_WORDS_KEY = "whoareyou_recent_words";
 const SURVIVAL_STREAK_KEY = "whoareyou_survival_streak";
+const PERSONAS = [
+  {
+    name: "谨慎路人",
+    description: "说得稳一点，不抢细节",
+  },
+  {
+    name: "装熟的人",
+    description: "像经常遇到它，但不报答案",
+  },
+  {
+    name: "嘴硬懂王",
+    description: "更敢说，成功分高但容易露馅",
+  },
+];
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -190,9 +224,9 @@ function writeSurvivalStreak(value: number) {
 }
 
 function getRiskMultiplier(listenedCount: number) {
-  if (listenedCount <= 2) return 1.15;
-  if (listenedCount === 3) return 1;
-  return 0.85;
+  if (listenedCount <= 1) return 1.18;
+  if (listenedCount === 2) return 1.05;
+  return 0.92;
 }
 
 function getAverageScore(judgements: Judgement[], key: keyof Judgement) {
@@ -206,7 +240,7 @@ function getAverageScore(judgements: Judgement[], key: keyof Judgement) {
 
 function calculateDisguiseScore(game: GameState, judgements: Judgement[], winner: Winner) {
   const sameCount = judgements.filter((judgement) => judgement.isSame).length;
-  const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
+  const listenedCount = Math.max(1, game.selectedIntel ? 1 : 0);
   const riskMultiplier = getRiskMultiplier(listenedCount);
   const guessedRight =
     game.playerGuess.trim() === game.secretWord ||
@@ -234,17 +268,17 @@ function calculateDisguiseScore(game: GameState, judgements: Judgement[], winner
 
 function getResultTitle(game: GameState, judgements: Judgement[], winner: Winner, score: number) {
   const sameCount = judgements.filter((judgement) => judgement.isSame).length;
-  const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
+  const listenedCount = Math.max(1, game.selectedIntel ? 1 : 0);
   const guessedRight =
     game.playerGuess.trim() === game.secretWord ||
     game.playerSpeech.includes(game.secretWord);
   const hasGuess = Boolean(game.playerGuess.trim());
 
   if (winner === "ai" && sameCount === 0) return "一句话自爆";
-  if (winner === "ai" && listenedCount >= 3) return "全程露馅";
+  if (winner === "ai" && game.followupAnswer) return "追问露馅";
   if (winner === "ai") return "差点混进去";
   if (guessedRight && score >= 85) return "精准破局";
-  if (listenedCount === 1 && score >= 80) return "盲狙成功";
+  if (listenedCount === 1 && score >= 80) return "一份情报通关";
   if (hasGuess && !guessedRight) return "误打误撞大师";
   if (guessedRight && score >= 80) return "精准潜伏者";
   if (sameCount === 3) return "天衣无缝";
@@ -255,7 +289,7 @@ function getResultTitle(game: GameState, judgements: Judgement[], winner: Winner
 function getResultTags(game: GameState, judgements: Judgement[], winner: Winner, score: number) {
   const sameCount = judgements.filter((judgement) => judgement.isSame).length;
   const suspectedCount = judgements.length - sameCount;
-  const listenedCount = Math.max(1, game.speeches.filter((speech) => speech.playerId !== 0).length);
+  const listenedCount = Math.max(1, game.selectedIntel ? 1 : 0);
   const guessedRight =
     game.playerGuess.trim() === game.secretWord ||
     game.playerSpeech.includes(game.secretWord);
@@ -268,8 +302,8 @@ function getResultTags(game: GameState, judgements: Judgement[], winner: Winner,
   if (winner === "player") tags.push("全员放行");
   if (winner === "ai" && suspectedCount === 1) tags.push("差一票过关");
   if (winner === "ai" && suspectedCount === 3) tags.push("全员警报");
-  if (listenedCount <= 2) tags.push("少线索出手");
-  if (listenedCount >= 4) tags.push("情报吃满");
+  tags.push("偷看一份情报");
+  if (game.followupAnswer) tags.push("扛过追问");
   if (guessedRight) tags.push("猜词命中");
   if (hasGuess && !guessedRight && winner === "player") tags.push("猜错也能装");
   if (naturalScore >= 78) tags.push("演技在线");
@@ -300,7 +334,7 @@ function InterrogationRoom({
           <div className="agentRow">
             {AI_NAMES.map((name) => {
               const latestSpeech = [...speeches].reverse().find((speech) => speech.playerName === name);
-              const isActive = activeSpeaker === name && phase === "listen";
+              const isActive = activeSpeaker === name && phase === "intel";
 
               return (
                 <article className={isActive ? "agentSeat active" : "agentSeat"} key={name}>
@@ -348,6 +382,9 @@ function createGame(): GameState {
     civilianWord: "",
     undercoverWord: "",
     seeds: [],
+    intelOptions: [],
+    selectedIntel: null,
+    persona: "",
     generatedDescriptions: [],
     descriptionTargetCount,
     visibleDescriptionCount: 0,
@@ -357,6 +394,8 @@ function createGame(): GameState {
     records: [],
     playerGuess: "",
     playerSpeech: "",
+    followupQuestion: "",
+    followupAnswer: "",
     judgements: [],
     winner: null,
     endedReason: "",
@@ -424,7 +463,33 @@ async function requestSetup(game: GameState): Promise<CompleteGameSetup> {
   if (!data.word || !data.descriptions || !data.seeds) {
     throw new Error("开局数据不完整");
   }
+  if (!data.intelOptions || data.intelOptions.length === 0) {
+    throw new Error("开局数据不完整");
+  }
   return data as CompleteGameSetup;
+}
+
+async function requestFollowup(game: GameState) {
+  const response = await fetch("/api/ai/game", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      task: "generateFollowup",
+      word: game.secretWord,
+      aiDescriptions: game.speeches
+        .filter((speech) => speech.playerId !== 0)
+        .map((speech) => ({
+          playerName: speech.playerName,
+          text: speech.text,
+        })),
+      selectedIntel: game.selectedIntel,
+      persona: game.persona,
+      playerSpeech: game.playerSpeech,
+    }),
+  });
+  const data = (await response.json()) as GenerateFollowupResponse;
+  if (!response.ok || data.error) throw new Error(data.error ?? "生成追问失败");
+  return data;
 }
 
 async function requestJudgement(game: GameState) {
@@ -441,8 +506,12 @@ async function requestJudgement(game: GameState) {
           playerName: speech.playerName,
           text: speech.text,
         })),
+      selectedIntel: game.selectedIntel,
+      persona: game.persona,
       playerGuess: game.playerGuess,
       playerSpeech: game.playerSpeech,
+      followupQuestion: game.followupQuestion,
+      followupAnswer: game.followupAnswer,
     }),
   });
   const data = (await response.json()) as JudgePlayerResponse;
@@ -504,6 +573,7 @@ export default function Home() {
   const [game, setGame] = useState<GameState>(() => createGame());
   const [guess, setGuess] = useState("");
   const [playerSpeech, setPlayerSpeech] = useState("");
+  const [followupAnswer, setFollowupAnswer] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState("");
@@ -517,6 +587,7 @@ export default function Home() {
     [game.speeches],
   );
   const canSpeak = playerSpeech.trim().length >= 4 && !isBusy;
+  const canFollowup = followupAnswer.trim().length >= 2 && !isBusy;
 
   useEffect(() => {
     setSurvivalStreak(readSurvivalStreak());
@@ -552,52 +623,35 @@ export default function Home() {
     void saveGame();
   }, [game, saveStatus]);
 
-  async function revealNextDescription(sourceGame = game) {
-    if (sourceGame.visibleDescriptionCount >= sourceGame.generatedDescriptions.length) {
-      setGame((current) => ({ ...current, phase: "speak" }));
-      return;
-    }
-
-    setIsBusy(true);
-    setProgress("AI正在发言");
-    await sleep(AI_DESCRIPTION_DELAY_MS);
-
-    const nextIndex = sourceGame.visibleDescriptionCount;
-    const aiPlayer = sourceGame.players[(nextIndex % AI_NAMES.length) + 1];
-    const speech: Speech = {
-      round: 1,
-      playerId: aiPlayer.id,
-      playerName: aiPlayer.name,
-      text: sourceGame.generatedDescriptions[nextIndex],
-    };
-
-    setGame((current) => ({
-      ...current,
-      phase: "listen",
-      visibleDescriptionCount: current.visibleDescriptionCount + 1,
-      speeches: [...current.speeches, speech],
-    }));
-    setProgress("");
-    setIsBusy(false);
-  }
-
   async function startGame() {
     setIsBusy(true);
     setError("");
-    setProgress("正在生成本局线索");
+    setProgress("正在生成本局情报");
 
     try {
       const data = await requestSetup(game);
       const descriptions = data.descriptions.slice(0, game.descriptionTargetCount);
+      const aiSpeeches: Speech[] = descriptions.map((text, index) => {
+        const aiPlayer = game.players[(index % AI_NAMES.length) + 1];
+        return {
+          round: 1,
+          playerId: aiPlayer.id,
+          playerName: aiPlayer.name,
+          text,
+        };
+      });
       rememberRecentWord(data.word);
       const nextGame = addTokenCall(
         {
           ...game,
-          phase: "listen",
+          phase: "intel",
           secretWord: data.word,
           civilianWord: data.word,
           seeds: data.seeds,
+          intelOptions: data.intelOptions.slice(0, 3),
           generatedDescriptions: descriptions,
+          visibleDescriptionCount: descriptions.length,
+          speeches: aiSpeeches,
           players: game.players.map((player) =>
             player.isHuman ? player : { ...player, word: data.word },
           ),
@@ -613,7 +667,6 @@ export default function Home() {
         },
       );
       setGame(nextGame);
-      await revealNextDescription(nextGame);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "开局失败");
     } finally {
@@ -622,30 +675,82 @@ export default function Home() {
     }
   }
 
+  function chooseIntel(option: IntelOption) {
+    if (isBusy || game.selectedIntel) return;
+    setGame((current) => ({ ...current, selectedIntel: option }));
+  }
+
+  function choosePersona(persona: string) {
+    if (isBusy) return;
+    setGame((current) => ({ ...current, persona }));
+  }
+
   function enterSpeakPhase() {
-    if (visibleSpeeches.length === 0 || isBusy) return;
+    if (!game.selectedIntel || !game.persona || isBusy) return;
     setGame((current) => ({ ...current, phase: "speak" }));
   }
 
-  async function submitPlayerSpeech() {
+  async function submitInitialSpeech() {
     if (!canSpeak) return;
+    setIsBusy(true);
+    setError("");
+    setProgress("AI正在准备追问");
+
+    try {
+      const gameWithSpeech = {
+        ...game,
+        phase: "speak" as const,
+        playerGuess: guess.trim(),
+        playerSpeech: playerSpeech.trim(),
+      };
+      const data = await requestFollowup(gameWithSpeech);
+      const withQuestion = {
+        ...gameWithSpeech,
+        phase: "followup" as const,
+        followupQuestion: data.question ?? "你刚才这句怎么接上",
+      };
+      const withToken = addTokenCall(withQuestion, {
+        round: 1,
+        task: "followup",
+        playerId: 1,
+        playerName: "AI追问",
+        model: data.model ?? "unknown",
+        usage: data.usage,
+        output: data.question ?? "",
+      });
+      setGame(withToken);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "生成追问失败");
+    } finally {
+      setProgress("");
+      setIsBusy(false);
+    }
+  }
+
+  async function submitFinalAnswer() {
+    if (!canFollowup) return;
     setIsBusy(true);
     setError("");
     setProgress("AI正在判断你是否属于它们");
 
     try {
-      const speech: Speech = {
+      const firstSpeech: Speech = {
         round: 1,
         playerId: 0,
         playerName: "你",
-        text: playerSpeech.trim(),
+        text: `第一句：${game.playerSpeech}`,
+      };
+      const answerSpeech: Speech = {
+        round: 1,
+        playerId: 0,
+        playerName: "你",
+        text: `补答：${followupAnswer.trim()}`,
       };
       const gameWithSpeech = {
         ...game,
         phase: "judging" as const,
-        playerGuess: guess.trim(),
-        playerSpeech: playerSpeech.trim(),
-        speeches: [...game.speeches, speech],
+        followupAnswer: followupAnswer.trim(),
+        speeches: [...game.speeches, firstSpeech, answerSpeech],
       };
       const data = await requestJudgement(gameWithSpeech);
       const judgements = data.judgements ?? [];
@@ -692,6 +797,7 @@ export default function Home() {
     setGame(createGame());
     setGuess("");
     setPlayerSpeech("");
+    setFollowupAnswer("");
     setIsBusy(false);
     setError("");
     setProgress("");
@@ -763,30 +869,55 @@ export default function Home() {
 
           {game.phase === "setup" && (
             <div className="stage">
-              <p>AI知道答案，你不知道。听几条线索后，用一句话假装你也知道。</p>
+              <p>AI知道答案，你不知道。先偷一份情报，再选一种伪装方式，最后扛住追问。</p>
               <button disabled={isBusy} onClick={startGame}>
                 {isBusy ? "准备中..." : "开始挑战"}
               </button>
             </div>
           )}
 
-          {game.phase === "listen" && (
+          {game.phase === "intel" && (
             <div className="stage">
-              <p>线索越少，骗过AI后的分数越高。你不知道一共有几条，可以随时出手。</p>
-              <div className="voteGrid">
-                <button disabled={isBusy} onClick={() => void revealNextDescription()}>
-                  继续听
-                </button>
-                <button disabled={isBusy || visibleSpeeches.length === 0} onClick={enterSpeakPhase}>
-                  写答案
-                </button>
+              <p>三份情报只能偷看一份。它不会告诉你答案，但会给你一个能圆谎的方向。</p>
+              <div className="cardGrid">
+                {game.intelOptions.map((option) => (
+                  <button
+                    className={game.selectedIntel?.title === option.title ? "choiceCard selected" : "choiceCard"}
+                    disabled={isBusy || Boolean(game.selectedIntel && game.selectedIntel.title !== option.title)}
+                    key={`${option.type}-${option.title}`}
+                    onClick={() => chooseIntel(option)}
+                  >
+                    <span>{option.type}</span>
+                    <strong>{option.title}</strong>
+                    <small>{game.selectedIntel?.title === option.title ? option.text : "点击偷看"}</small>
+                  </button>
+                ))}
               </div>
+              <p>再选一个伪装人设。AI会按你的说话方式和追问表现一起判断。</p>
+              <div className="cardGrid personaGrid">
+                {PERSONAS.map((persona) => (
+                  <button
+                    className={game.persona === persona.name ? "choiceCard selected" : "choiceCard"}
+                    disabled={isBusy}
+                    key={persona.name}
+                    onClick={() => choosePersona(persona.name)}
+                  >
+                    <strong>{persona.name}</strong>
+                    <small>{persona.description}</small>
+                  </button>
+                ))}
+              </div>
+              <button disabled={!game.selectedIntel || !game.persona || isBusy} onClick={enterSpeakPhase}>
+                开始伪装
+              </button>
             </div>
           )}
 
           {game.phase === "speak" && (
             <div className="stage">
-              <p>写一句像知道答案的人会说的话。猜词可填可不填，猜错但骗过AI更有意思。</p>
+              <p>
+                你偷到的是：{game.selectedIntel?.text}。用“{game.persona}”的方式说第一句话。
+              </p>
               <input
                 className="textInput"
                 value={guess}
@@ -798,15 +929,29 @@ export default function Home() {
                 onChange={(event) => setPlayerSpeech(event.target.value)}
                 placeholder="输入10-20字伪装发言"
               />
-              <button className="actionButton" disabled={!canSpeak} onClick={submitPlayerSpeech}>
-                提交发言并接受判断
+              <button className="actionButton" disabled={!canSpeak} onClick={submitInitialSpeech}>
+                提交第一句
+              </button>
+            </div>
+          )}
+
+          {game.phase === "followup" && (
+            <div className="stage">
+              <p className="questionBox">AI追问：{game.followupQuestion}</p>
+              <textarea
+                value={followupAnswer}
+                onChange={(event) => setFollowupAnswer(event.target.value)}
+                placeholder="补一句圆过去"
+              />
+              <button className="actionButton" disabled={!canFollowup} onClick={submitFinalAnswer}>
+                补答并接受审查
               </button>
             </div>
           )}
 
           {game.phase === "judging" && (
             <div className="stage">
-              <p>AI正在判断你的发言是否属于它们的方向。</p>
+              <p>AI正在对照情报、第一句和补答，判断你是不是自己人。</p>
             </div>
           )}
 
@@ -831,11 +976,14 @@ export default function Home() {
                 {game.judgements.filter((judgement) => !judgement.isSame).length}
               </p>
               <p>
-                听了 {game.listenedCount} 条线索 · 倍率 x{game.riskMultiplier.toFixed(2)}
+                偷看 {game.listenedCount} 份情报 · 倍率 x{game.riskMultiplier.toFixed(2)}
               </p>
               <p>本局答案：{game.secretWord}</p>
               <p>你的猜测：{game.playerGuess || "未填写"}</p>
-              <p>伪装句：{game.playerSpeech}</p>
+              <p>伪装人设：{game.persona || "未选择"}</p>
+              <p>偷看情报：{game.selectedIntel?.text || "无"}</p>
+              <p>第一句：{game.playerSpeech}</p>
+              <p>补答：{game.followupAnswer}</p>
               <p>
                 {saveStatus === "saving" && "正在保存本局..."}
                 {saveStatus === "saved" && `本局已保存：${savedGameId}`}

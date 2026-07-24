@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { callBailianChat, type BailianMessage } from "../../../../lib/bailian";
-import { buildGameSetupPrompt, buildJudgementPrompt } from "../../../../lib/prompts";
+import { buildFollowupPrompt, buildGameSetupPrompt, buildJudgementPrompt } from "../../../../lib/prompts";
 
 type DescriptionSeed = {
   side: string;
+  text: string;
+};
+
+type IntelOption = {
+  type: string;
+  title: string;
   text: string;
 };
 
@@ -30,6 +36,18 @@ type GenerateSetupRequest = {
   survivalStreak?: number;
 };
 
+type GenerateFollowupRequest = {
+  task: "generateFollowup";
+  word: string;
+  aiDescriptions: {
+    playerName: string;
+    text: string;
+  }[];
+  selectedIntel?: IntelOption;
+  persona?: string;
+  playerSpeech: string;
+};
+
 type JudgePlayerRequest = {
   task: "judgePlayer";
   word: string;
@@ -38,11 +56,15 @@ type JudgePlayerRequest = {
     playerName: string;
     text: string;
   }[];
+  selectedIntel?: IntelOption;
+  persona?: string;
   playerGuess: string;
   playerSpeech: string;
+  followupQuestion?: string;
+  followupAnswer?: string;
 };
 
-type GameAiRequest = GenerateSetupRequest | JudgePlayerRequest;
+type GameAiRequest = GenerateSetupRequest | GenerateFollowupRequest | JudgePlayerRequest;
 
 type Judgement = {
   aiName: string;
@@ -220,6 +242,26 @@ function validateDescriptions(word: string, seeds: DescriptionSeed[], descriptio
   });
 }
 
+function validateIntelOptions(word: string, options: IntelOption[]) {
+  const seen = new Set<string>();
+
+  return options.filter((option) => {
+    const type = String(option.type ?? "").trim();
+    const title = String(option.title ?? "").trim().slice(0, 12);
+    const text = String(option.text ?? "").trim().slice(0, 32);
+    const normalized = normalizeText(text);
+    if (!type || !title || !normalized) return false;
+    if (normalized.length < 6 || normalized.length > 22) return false;
+    if (normalized.includes(word)) return false;
+    if (seen.has(type)) return false;
+    seen.add(type);
+    option.type = type;
+    option.title = title;
+    option.text = text;
+    return true;
+  });
+}
+
 function clampScore(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.min(100, Math.round(value)))
@@ -343,6 +385,11 @@ function fallbackSetup(count: number, difficulty: DifficultyProfile) {
         { side: "状态侧面", text: "过程里常要推理" },
       ],
       descriptions: ["朋友约局会想到", "会先拿到身份", "过程里常要推理", "复盘时容易争起来"],
+      intelOptions: [
+        { type: "场景情报", title: "约局场景", text: "朋友聚会时容易出现" },
+        { type: "行为情报", title: "先拿东西", text: "开始前常会先分身份" },
+        { type: "危险情报", title: "别太直白", text: "别提凶手剧本和推理" },
+      ],
     },
     {
       word: "情绪价值",
@@ -352,6 +399,11 @@ function fallbackSetup(count: number, difficulty: DifficultyProfile) {
         { side: "关联侧面", text: "不一定解决事" },
       ],
       descriptions: ["听完会舒服些", "聊天里很加分", "不一定解决事", "有人特别吃这套"],
+      intelOptions: [
+        { type: "感受情报", title: "听完反应", text: "对方会觉得被接住" },
+        { type: "场景情报", title: "聊天场景", text: "亲密聊天里很常见" },
+        { type: "危险情报", title: "别太直白", text: "别提安慰情绪和陪伴" },
+      ],
     },
     {
       word: "职场潜规则",
@@ -361,6 +413,11 @@ function fallbackSetup(count: number, difficulty: DifficultyProfile) {
         { side: "后果侧面", text: "懂了会少碰壁" },
       ],
       descriptions: ["没人明着说", "新人容易踩到", "懂了会少碰壁", "老员工都默认"],
+      intelOptions: [
+        { type: "场景情报", title: "新人阶段", text: "刚进去时最容易碰到" },
+        { type: "感受情报", title: "懂了以后", text: "明白后会少吃暗亏" },
+        { type: "危险情报", title: "别太直白", text: "别提公司规矩和潜规则" },
+      ],
     },
     {
       word: "社交货币",
@@ -370,6 +427,11 @@ function fallbackSetup(count: number, difficulty: DifficultyProfile) {
         { side: "状态侧面", text: "过期就不好用了" },
       ],
       descriptions: ["聊天时能派上", "知道多会加分", "过期就不好用了", "别人会接得上"],
+      intelOptions: [
+        { type: "场景情报", title: "聊天入口", text: "聊天冷场时能用上" },
+        { type: "感受情报", title: "别人反应", text: "懂的人会马上接住" },
+        { type: "危险情报", title: "别太直白", text: "别提谈资热点和梗" },
+      ],
     },
   ];
   const setup = setups[Math.min(difficulty.level - 1, setups.length - 1)];
@@ -377,6 +439,7 @@ function fallbackSetup(count: number, difficulty: DifficultyProfile) {
   return {
     ...setup,
     descriptions: setup.descriptions.slice(0, count),
+    intelOptions: setup.intelOptions,
   };
 }
 
@@ -407,18 +470,26 @@ async function generateSetup(body: GenerateSetupRequest) {
         word?: string;
         seeds?: DescriptionSeed[];
         descriptions?: string[];
+        intelOptions?: IntelOption[];
       }>(result.content);
       const word = normalizeText(parsed.word ?? "");
       const seeds = (parsed.seeds ?? []).slice(0, 3).filter((seed) => {
         return Boolean(seed.side) && validateDescriptions(word, [], [seed.text]).length === 1;
       });
       const descriptions = validateDescriptions(word, seeds, parsed.descriptions ?? []);
+      const intelOptions = validateIntelOptions(word, parsed.intelOptions ?? []);
 
-      if (validateWord(word, recentWords, difficulty) && seeds.length === 3 && descriptions.length === count) {
+      if (
+        validateWord(word, recentWords, difficulty) &&
+        seeds.length === 3 &&
+        descriptions.length === count &&
+        intelOptions.length >= 3
+      ) {
         return {
           word,
           seeds,
           descriptions,
+          intelOptions: intelOptions.slice(0, 3),
           topic: topic.name,
           difficulty: difficulty.name,
           difficultyLevel: difficulty.level,
@@ -437,12 +508,50 @@ async function generateSetup(body: GenerateSetupRequest) {
     word: fallback.word,
     seeds: fallback.seeds,
     descriptions: fallback.descriptions,
+    intelOptions: fallback.intelOptions,
     topic: topic.name,
     difficulty: difficulty.name,
     difficultyLevel: difficulty.level,
     usage: undefined,
     model: model ?? process.env.BAILIAN_MODEL ?? "fallback",
     raw: "fallback-setup",
+  };
+}
+
+async function generateFollowup(body: GenerateFollowupRequest) {
+  const messages = [
+    baseSystemPrompt(),
+    {
+      role: "user" as const,
+      content: buildFollowupPrompt(body),
+    },
+  ];
+  const model = process.env.BAILIAN_JUDGE_MODEL ?? process.env.BAILIAN_VOTE_MODEL;
+  const fallbackQuestion = "你刚才这句怎么接上";
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await callBailianChat(messages, { model, maxTokens: 120 });
+    try {
+      const parsed = parseJsonObject<{ question?: string }>(result.content);
+      const question = String(parsed.question ?? "").trim().slice(0, 24);
+      if (question && !normalizeText(question).includes(normalizeText(body.word))) {
+        return {
+          question,
+          usage: result.usage,
+          model: result.model,
+          raw: result.content,
+        };
+      }
+    } catch {
+      // Retry once, then fallback.
+    }
+  }
+
+  return {
+    question: fallbackQuestion,
+    usage: undefined,
+    model: model ?? process.env.BAILIAN_MODEL ?? "fallback",
+    raw: "fallback-followup",
   };
 }
 
@@ -553,6 +662,10 @@ export async function POST(request: Request) {
 
     if (body.task === "generateSetup") {
       return NextResponse.json(await generateSetup(body));
+    }
+
+    if (body.task === "generateFollowup") {
+      return NextResponse.json(await generateFollowup(body));
     }
 
     if (body.task === "judgePlayer") {
