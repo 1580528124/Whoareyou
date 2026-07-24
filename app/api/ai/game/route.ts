@@ -11,6 +11,7 @@ type WordTopic = {
   name: string;
   description: string;
   examples: string[];
+  minDifficulty?: number;
 };
 
 type DifficultyProfile = {
@@ -88,11 +89,13 @@ const WORD_TOPICS: WordTopic[] = [
     name: "亲密关系",
     description: "朋友、恋人、家人相处里会出现的具体行为、身份或场景",
     examples: ["冷战", "见家长", "闺蜜", "相亲局", "纪念日"],
+    minDifficulty: 2,
   },
   {
     name: "网络黑话",
     description: "短视频、弹幕、评论区、聊天软件里常见的中文表达或现象",
     examples: ["破防", "电子榨菜", "显眼包", "种草", "嘴替"],
+    minDifficulty: 2,
   },
   {
     name: "县城生活",
@@ -113,6 +116,7 @@ const WORD_TOPICS: WordTopic[] = [
     name: "社交尴尬",
     description: "聚会、聊天、饭局、群聊里让人微妙尴尬的具体场景",
     examples: ["冷场", "劝酒", "群发祝福", "抢着买单", "自我介绍"],
+    minDifficulty: 2,
   },
   {
     name: "娱乐消费",
@@ -131,8 +135,8 @@ const DIFFICULTY_PROFILES: DifficultyProfile[] = [
     level: 1,
     name: "普通审查",
     maxWordLength: 5,
-    wordRule: "生成日常玩家熟悉、但不是基础物品的词；可以是具体场景、活动、服务或流行表达。",
-    clueRule: "线索可以给出一个较清晰的日常方向，但不能直接锁定答案。",
+    wordRule: "生成常见、日常可见、玩家容易理解的具体事物或场景，例如食物、店铺、公共设施、生活服务、娱乐项目、校园物品；不要生成抽象概念或网络黑话。",
+    clueRule: "线索可以给出较清晰的日常方向，让玩家能在2到3条线索后大致猜到范围，但不要直接说出答案。",
     clueLengthRule: "每条去除标点后必须是4到10个汉字",
   },
   {
@@ -168,8 +172,9 @@ function getDifficultyProfile(survivalStreak: number) {
   return DIFFICULTY_PROFILES[0];
 }
 
-function pickWordTopic() {
-  return WORD_TOPICS[Math.floor(Math.random() * WORD_TOPICS.length)] ?? WORD_TOPICS[0];
+function pickWordTopic(difficulty: DifficultyProfile) {
+  const candidates = WORD_TOPICS.filter((topic) => (topic.minDifficulty ?? 1) <= difficulty.level);
+  return candidates[Math.floor(Math.random() * candidates.length)] ?? WORD_TOPICS[0];
 }
 
 function baseSystemPrompt(): BailianMessage {
@@ -380,7 +385,7 @@ async function generateSetup(body: GenerateSetupRequest) {
   const recentWords = (body.recentWords ?? []).map(normalizeText).filter(Boolean).slice(0, 30);
   const survivalStreak = Number.isFinite(body.survivalStreak) ? Math.max(0, Math.floor(body.survivalStreak ?? 0)) : 0;
   const difficulty = getDifficultyProfile(survivalStreak);
-  const topic = pickWordTopic();
+  const topic = pickWordTopic(difficulty);
   const messages = [
     baseSystemPrompt(),
     {
