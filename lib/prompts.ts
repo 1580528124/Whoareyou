@@ -1,6 +1,11 @@
 type BuildGameSetupPromptInput = {
   count: number;
   recentWords: string[];
+  topic: {
+    name: string;
+    description: string;
+    examples: string[];
+  };
 };
 
 type BuildJudgementPromptInput = {
@@ -14,10 +19,15 @@ type BuildJudgementPromptInput = {
   playerSpeech: string;
 };
 
-export function buildGameSetupPrompt({ count, recentWords }: BuildGameSetupPromptInput) {
+export function buildGameSetupPrompt({ count, recentWords, topic }: BuildGameSetupPromptInput) {
   return `你是一个语言伪装游戏的开局生成器。
 
 请为本局生成1个平民核心词，并基于这个词生成${count}条AI线索。
+
+本局题材大类：${topic.name}
+题材说明：${topic.description}
+题材参考示例：${topic.examples.join("、")}
+注意：参考示例只表示题材方向和难度，不要直接照抄示例词。
 
 最近出现过的词，尽量不要重复：
 ${recentWords.length > 0 ? recentWords.join("、") : "无"}
@@ -27,11 +37,13 @@ ${recentWords.length > 0 ? recentWords.join("、") : "无"}
 2. 2到5个汉字
 3. 难度为中等，不能是一眼就能猜到的基础日用品或基础食物
 4. 适合日常玩家理解，但要有一定辨识门槛
-5. 优先生成有多个相近干扰方向的词，例如具体菜名、娱乐作品、公共场景、职业身份、常见活动、人物称谓、成语俗语、生活服务
-6. 不要太冷门，不要使用专业术语，不要生成抽象到无法描述的词
-7. 禁止生成过于简单的词，例如：面包、雨伞、手机、牛奶、西瓜、苹果、杯子、椅子、书包、电脑、电视、筷子、口罩、牙刷、衣服、鞋子
-8. 不要生成只靠一个典型动作就能立刻猜出的词
-9. 生成的词应该能被误猜成至少2个相近词
+5. 必须贴合本局题材大类，不要总是生成城市生活服务类词
+6. 优先生成有多个相近干扰方向的词，例如具体菜名、娱乐作品、公共场景、职业身份、常见活动、人物称谓、成语俗语、生活服务、社交关系、网络表达、童年记忆
+7. 不要太冷门，不要使用专业术语，不要生成抽象到无法描述的词
+8. 禁止生成过于简单的词，例如：面包、雨伞、手机、牛奶、西瓜、苹果、杯子、椅子、书包、电脑、电视、筷子、口罩、牙刷、衣服、鞋子
+9. 不要生成只靠一个典型动作就能立刻猜出的词
+10. 生成的词应该能被误猜成至少2个相近词
+11. 避免连续生成同一风格的词，例如不要总是生成店铺、机器、饮品或公共设施
 
 种子描述要求：
 1. 为核心词生成3条种子描述

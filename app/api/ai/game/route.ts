@@ -7,6 +7,12 @@ type DescriptionSeed = {
   text: string;
 };
 
+type WordTopic = {
+  name: string;
+  description: string;
+  examples: string[];
+};
+
 type GenerateSetupRequest = {
   task: "generateSetup";
   count: number;
@@ -56,6 +62,63 @@ const BANNED_EASY_WORDS = new Set([
   "衣服",
   "鞋子",
 ]);
+
+const WORD_TOPICS: WordTopic[] = [
+  {
+    name: "校园生活",
+    description: "学生时代常见但不一定第一时间猜中的场景、物品、关系或活动",
+    examples: ["晚自习", "班主任", "社团招新", "运动会", "小卖部"],
+  },
+  {
+    name: "打工人日常",
+    description: "上班、通勤、会议、摸鱼、加班、同事关系里的具体词",
+    examples: ["周报", "绩效面谈", "工位", "茶水间", "团建"],
+  },
+  {
+    name: "亲密关系",
+    description: "朋友、恋人、家人相处里会出现的具体行为、身份或场景",
+    examples: ["冷战", "见家长", "闺蜜", "相亲局", "纪念日"],
+  },
+  {
+    name: "网络黑话",
+    description: "短视频、弹幕、评论区、聊天软件里常见的中文表达或现象",
+    examples: ["破防", "电子榨菜", "显眼包", "种草", "嘴替"],
+  },
+  {
+    name: "县城生活",
+    description: "小城、街边、熟人社会、地方消费里常见的具体事物",
+    examples: ["夜市", "彩票站", "熟人介绍", "修鞋摊", "广场舞"],
+  },
+  {
+    name: "旅行场景",
+    description: "出门旅行、住宿、交通、景点、游客行为里的具体词",
+    examples: ["民宿", "跟团游", "登机牌", "特产店", "行李寄存"],
+  },
+  {
+    name: "童年回忆",
+    description: "小时候玩过、吃过、看过或经历过的具体事物",
+    examples: ["跳皮筋", "小霸王", "辣条", "课间操", "涂改液"],
+  },
+  {
+    name: "社交尴尬",
+    description: "聚会、聊天、饭局、群聊里让人微妙尴尬的具体场景",
+    examples: ["冷场", "劝酒", "群发祝福", "抢着买单", "自我介绍"],
+  },
+  {
+    name: "娱乐消费",
+    description: "年轻人休闲娱乐、线下消费、线上娱乐里的具体项目",
+    examples: ["剧本杀", "脱口秀", "演唱会", "密室逃脱", "抓娃娃"],
+  },
+  {
+    name: "城市服务",
+    description: "城市里常见但有相近干扰项的服务、设施或店铺",
+    examples: ["干洗店", "代驾", "共享充电宝", "自助洗衣", "打印店"],
+  },
+];
+
+function pickWordTopic() {
+  return WORD_TOPICS[Math.floor(Math.random() * WORD_TOPICS.length)] ?? WORD_TOPICS[0];
+}
 
 function baseSystemPrompt(): BailianMessage {
   return {
@@ -233,6 +296,7 @@ function fallbackSetup(count: number) {
 async function generateSetup(body: GenerateSetupRequest) {
   const count = Math.max(2, Math.min(4, Number.isFinite(body.count) ? body.count : 3));
   const recentWords = (body.recentWords ?? []).map(normalizeText).filter(Boolean).slice(0, 30);
+  const topic = pickWordTopic();
   const messages = [
     baseSystemPrompt(),
     {
@@ -240,6 +304,7 @@ async function generateSetup(body: GenerateSetupRequest) {
       content: buildGameSetupPrompt({
         count,
         recentWords,
+        topic,
       }),
     },
   ];
@@ -264,6 +329,7 @@ async function generateSetup(body: GenerateSetupRequest) {
           word,
           seeds,
           descriptions,
+          topic: topic.name,
           usage: result.usage,
           model: result.model,
           raw: result.content,
@@ -279,6 +345,7 @@ async function generateSetup(body: GenerateSetupRequest) {
     word: fallback.word,
     seeds: fallback.seeds,
     descriptions: fallback.descriptions,
+    topic: topic.name,
     usage: undefined,
     model: model ?? process.env.BAILIAN_MODEL ?? "fallback",
     raw: "fallback-setup",

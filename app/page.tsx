@@ -220,7 +220,8 @@ function calculateDisguiseScore(game: GameState, judgements: Judgement[], winner
   const wrongGuessBonus = winner === "player" && game.playerGuess.trim() && !guessedRight ? 5 : 0;
   const resultBonus = winner === "player" ? 8 : 0;
   const rawScore = (passScore + qualityScore - suspicionPenalty + resultBonus) * riskMultiplier + wrongGuessBonus;
-  const score = Math.round(Math.max(0, Math.min(98, rawScore)));
+  const scoreFloor = winner === "player" ? 70 : 0;
+  const score = Math.round(Math.max(scoreFloor, Math.min(98, rawScore)));
 
   return {
     score,
@@ -277,6 +278,49 @@ function getResultTags(game: GameState, judgements: Judgement[], winner: Winner,
   if (score < 45) tags.push("当场露馅");
 
   return Array.from(new Set(tags)).slice(0, 5);
+}
+
+function InterrogationRoom({
+  phase,
+  speeches,
+}: {
+  phase: Phase;
+  speeches: Speech[];
+}) {
+  const activeSpeaker = speeches.at(-1)?.playerName;
+  const showOverlay = phase !== "setup";
+
+  return (
+    <div className="interrogationRoom">
+      <div className="roomLight" />
+      {showOverlay && (
+        <>
+          <div className="agentRow">
+            {AI_NAMES.map((name) => {
+              const latestSpeech = [...speeches].reverse().find((speech) => speech.playerName === name);
+              const isActive = activeSpeaker === name && phase === "listen";
+
+              return (
+                <article className={isActive ? "agentSeat active" : "agentSeat"} key={name}>
+                  <div className="agentAvatar">
+                    <span>{name.slice(0, 1)}</span>
+                  </div>
+                  <div className="agentPlate">
+                    <strong>{name}</strong>
+                    <small>{AI_ROLES[name]}</small>
+                  </div>
+                  {latestSpeech && <div className="speechBubble">{latestSpeech.text}</div>}
+                </article>
+              );
+            })}
+          </div>
+          <div className="interrogationTable">
+            <div className="tableGlow" />
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function createGame(): GameState {
@@ -699,7 +743,7 @@ export default function Home() {
       </section>
 
       <section className="board">
-        <div className="panel primary">
+        <div className={`panel primary primary-${game.phase}`}>
           <div className="sectionHeader">
             <div>
               <p className="eyebrow">你的信息</p>
@@ -710,6 +754,9 @@ export default function Home() {
 
           {error && <p className="errorText">{error}</p>}
           {progress && <p className="progressText">{progress}</p>}
+          {game.phase !== "result" && (
+            <InterrogationRoom phase={game.phase} speeches={visibleSpeeches} />
+          )}
 
           {game.phase === "setup" && (
             <div className="stage">
@@ -723,14 +770,6 @@ export default function Home() {
           {game.phase === "listen" && (
             <div className="stage">
               <p>线索越少，骗过AI后的分数越高。你不知道一共有几条，可以随时出手。</p>
-              <div className="roundSpeeches">
-                {visibleSpeeches.map((speech) => (
-                  <article className="roundSpeech" key={`${speech.playerId}-${speech.text}`}>
-                    <span>{speech.playerName}</span>
-                    <p>{speech.text}</p>
-                  </article>
-                ))}
-              </div>
               <div className="voteGrid">
                 <button disabled={isBusy} onClick={() => void revealNextDescription()}>
                   继续听
@@ -745,14 +784,6 @@ export default function Home() {
           {game.phase === "speak" && (
             <div className="stage">
               <p>写一句像知道答案的人会说的话。猜词可填可不填，猜错但骗过AI更有意思。</p>
-              <div className="roundSpeeches">
-                {visibleSpeeches.map((speech) => (
-                  <article className="roundSpeech" key={`${speech.playerId}-${speech.text}`}>
-                    <span>{speech.playerName}</span>
-                    <p>{speech.text}</p>
-                  </article>
-                ))}
-              </div>
               <input
                 className="textInput"
                 value={guess}
