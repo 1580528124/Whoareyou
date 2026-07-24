@@ -13,10 +13,20 @@ type WordTopic = {
   examples: string[];
 };
 
+type DifficultyProfile = {
+  level: number;
+  name: string;
+  maxWordLength: number;
+  wordRule: string;
+  clueRule: string;
+  clueLengthRule: string;
+};
+
 type GenerateSetupRequest = {
   task: "generateSetup";
   count: number;
   recentWords?: string[];
+  survivalStreak?: number;
 };
 
 type JudgePlayerRequest = {
@@ -116,6 +126,48 @@ const WORD_TOPICS: WordTopic[] = [
   },
 ];
 
+const DIFFICULTY_PROFILES: DifficultyProfile[] = [
+  {
+    level: 1,
+    name: "普通审查",
+    maxWordLength: 5,
+    wordRule: "生成日常玩家熟悉、但不是基础物品的词；可以是具体场景、活动、服务或流行表达。",
+    clueRule: "线索可以给出一个较清晰的日常方向，但不能直接锁定答案。",
+    clueLengthRule: "每条去除标点后必须是4到10个汉字",
+  },
+  {
+    level: 2,
+    name: "进阶审查",
+    maxWordLength: 5,
+    wordRule: "生成稍有辨识门槛的词，减少普通店铺、机器、饮品、基础活动；优先使用有相近干扰项的社交、职场、网络、校园或娱乐词。",
+    clueRule: "线索要更侧面，避免直接描述用途或典型功能，让玩家需要拼接2条以上才有方向。",
+    clueLengthRule: "每条去除标点后必须是4到9个汉字",
+  },
+  {
+    level: 3,
+    name: "困难审查",
+    maxWordLength: 6,
+    wordRule: "生成不那么平常但仍能被日常玩家理解的词，可以是社交心理、网络文化、亚文化活动、职场隐性场景、复合生活现象；不要生成常见具体商品或普通公共设施。",
+    clueRule: "线索必须模糊，只能描述外围场景、情绪后果、出现时机或旁观者反应，不能说核心用途、组成或招牌动作。",
+    clueLengthRule: "每条去除标点后必须是4到8个汉字",
+  },
+  {
+    level: 4,
+    name: "高压审查",
+    maxWordLength: 6,
+    wordRule: "生成有明显辨识门槛的生活概念或文化现象，不要是平常一眼能想到的东西；适合被误猜成多个近义或相邻概念。",
+    clueRule: "线索非常克制，只给边缘感受和非唯一场景；单条线索应至少能误导到3个相近答案。",
+    clueLengthRule: "每条去除标点后必须是4到7个汉字",
+  },
+];
+
+function getDifficultyProfile(survivalStreak: number) {
+  if (survivalStreak >= 7) return DIFFICULTY_PROFILES[3];
+  if (survivalStreak >= 4) return DIFFICULTY_PROFILES[2];
+  if (survivalStreak >= 2) return DIFFICULTY_PROFILES[1];
+  return DIFFICULTY_PROFILES[0];
+}
+
 function pickWordTopic() {
   return WORD_TOPICS[Math.floor(Math.random() * WORD_TOPICS.length)] ?? WORD_TOPICS[0];
 }
@@ -138,10 +190,10 @@ function normalizeText(text: string) {
   return text.replace(/[，。！？、,.!?；;：“”"'\s]/g, "").trim();
 }
 
-function validateWord(word: string, recentWords: string[]) {
+function validateWord(word: string, recentWords: string[], difficulty: DifficultyProfile) {
   return (
     word.length >= 2 &&
-    word.length <= 5 &&
+    word.length <= difficulty.maxWordLength &&
     !recentWords.includes(word) &&
     !BANNED_EASY_WORDS.has(word) &&
     /^[\u4e00-\u9fa5]+$/.test(word)
@@ -276,16 +328,46 @@ function strengthenExactWordHitJudgement(word: string, speech: string, judgement
 }
 
 
-function fallbackSetup(count: number) {
-  const setup = {
-    word: "剧本杀",
-    seeds: [
-      { side: "场景侧面", text: "朋友约局会想到" },
-      { side: "操作侧面", text: "会先拿到身份" },
-      { side: "状态侧面", text: "过程里常要推理" },
-    ],
-    descriptions: ["朋友约局会想到", "会先拿到身份", "过程里常要推理", "复盘时容易争起来"],
-  };
+function fallbackSetup(count: number, difficulty: DifficultyProfile) {
+  const setups = [
+    {
+      word: "剧本杀",
+      seeds: [
+        { side: "场景侧面", text: "朋友约局会想到" },
+        { side: "操作侧面", text: "会先拿到身份" },
+        { side: "状态侧面", text: "过程里常要推理" },
+      ],
+      descriptions: ["朋友约局会想到", "会先拿到身份", "过程里常要推理", "复盘时容易争起来"],
+    },
+    {
+      word: "情绪价值",
+      seeds: [
+        { side: "后果侧面", text: "听完会舒服些" },
+        { side: "场景侧面", text: "聊天里很加分" },
+        { side: "关联侧面", text: "不一定解决事" },
+      ],
+      descriptions: ["听完会舒服些", "聊天里很加分", "不一定解决事", "有人特别吃这套"],
+    },
+    {
+      word: "职场潜规则",
+      seeds: [
+        { side: "状态侧面", text: "没人明着说" },
+        { side: "场景侧面", text: "新人容易踩到" },
+        { side: "后果侧面", text: "懂了会少碰壁" },
+      ],
+      descriptions: ["没人明着说", "新人容易踩到", "懂了会少碰壁", "老员工都默认"],
+    },
+    {
+      word: "社交货币",
+      seeds: [
+        { side: "场景侧面", text: "聊天时能派上" },
+        { side: "后果侧面", text: "知道多会加分" },
+        { side: "状态侧面", text: "过期就不好用了" },
+      ],
+      descriptions: ["聊天时能派上", "知道多会加分", "过期就不好用了", "别人会接得上"],
+    },
+  ];
+  const setup = setups[Math.min(difficulty.level - 1, setups.length - 1)];
 
   return {
     ...setup,
@@ -296,6 +378,8 @@ function fallbackSetup(count: number) {
 async function generateSetup(body: GenerateSetupRequest) {
   const count = Math.max(2, Math.min(4, Number.isFinite(body.count) ? body.count : 3));
   const recentWords = (body.recentWords ?? []).map(normalizeText).filter(Boolean).slice(0, 30);
+  const survivalStreak = Number.isFinite(body.survivalStreak) ? Math.max(0, Math.floor(body.survivalStreak ?? 0)) : 0;
+  const difficulty = getDifficultyProfile(survivalStreak);
   const topic = pickWordTopic();
   const messages = [
     baseSystemPrompt(),
@@ -305,6 +389,7 @@ async function generateSetup(body: GenerateSetupRequest) {
         count,
         recentWords,
         topic,
+        difficulty,
       }),
     },
   ];
@@ -324,12 +409,14 @@ async function generateSetup(body: GenerateSetupRequest) {
       });
       const descriptions = validateDescriptions(word, seeds, parsed.descriptions ?? []);
 
-      if (validateWord(word, recentWords) && seeds.length === 3 && descriptions.length === count) {
+      if (validateWord(word, recentWords, difficulty) && seeds.length === 3 && descriptions.length === count) {
         return {
           word,
           seeds,
           descriptions,
           topic: topic.name,
+          difficulty: difficulty.name,
+          difficultyLevel: difficulty.level,
           usage: result.usage,
           model: result.model,
           raw: result.content,
@@ -340,12 +427,14 @@ async function generateSetup(body: GenerateSetupRequest) {
     }
   }
 
-  const fallback = fallbackSetup(count);
+  const fallback = fallbackSetup(count, difficulty);
   return {
     word: fallback.word,
     seeds: fallback.seeds,
     descriptions: fallback.descriptions,
     topic: topic.name,
+    difficulty: difficulty.name,
+    difficultyLevel: difficulty.level,
     usage: undefined,
     model: model ?? process.env.BAILIAN_MODEL ?? "fallback",
     raw: "fallback-setup",

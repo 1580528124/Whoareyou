@@ -114,6 +114,8 @@ type GenerateSetupResponse = {
   word?: string;
   seeds?: DescriptionSeed[];
   descriptions?: string[];
+  difficulty?: string;
+  difficultyLevel?: number;
   usage?: Usage;
   model?: string;
   error?: string;
@@ -414,6 +416,7 @@ async function requestSetup(game: GameState): Promise<CompleteGameSetup> {
       task: "generateSetup",
       count: game.descriptionTargetCount,
       recentWords: readRecentWords(),
+      survivalStreak: readSurvivalStreak(),
     }),
   });
   const data = (await response.json()) as GenerateSetupResponse;

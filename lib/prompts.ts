@@ -6,6 +6,13 @@ type BuildGameSetupPromptInput = {
     description: string;
     examples: string[];
   };
+  difficulty: {
+    level: number;
+    name: string;
+    wordRule: string;
+    clueRule: string;
+    clueLengthRule: string;
+  };
 };
 
 type BuildJudgementPromptInput = {
@@ -19,10 +26,15 @@ type BuildJudgementPromptInput = {
   playerSpeech: string;
 };
 
-export function buildGameSetupPrompt({ count, recentWords, topic }: BuildGameSetupPromptInput) {
+export function buildGameSetupPrompt({ count, recentWords, topic, difficulty }: BuildGameSetupPromptInput) {
   return `你是一个语言伪装游戏的开局生成器。
 
 请为本局生成1个平民核心词，并基于这个词生成${count}条AI线索。
+
+本局难度：${difficulty.name}（等级${difficulty.level}）
+词语难度要求：${difficulty.wordRule}
+线索模糊度要求：${difficulty.clueRule}
+线索长度要求：${difficulty.clueLengthRule}
 
 本局题材大类：${topic.name}
 题材说明：${topic.description}
@@ -34,8 +46,8 @@ ${recentWords.length > 0 ? recentWords.join("、") : "无"}
 
 核心词要求：
 1. 必须是中文
-2. 2到5个汉字
-3. 难度为中等，不能是一眼就能猜到的基础日用品或基础食物
+2. 2到6个汉字，低难度优先2到5字，高难度可以使用5到6字
+3. 难度必须符合本局难度，不能是一眼就能猜到的基础日用品或基础食物
 4. 适合日常玩家理解，但要有一定辨识门槛
 5. 必须贴合本局题材大类，不要总是生成城市生活服务类词
 6. 优先生成有多个相近干扰方向的词，例如具体菜名、娱乐作品、公共场景、职业身份、常见活动、人物称谓、成语俗语、生活服务、社交关系、网络表达、童年记忆
@@ -55,15 +67,16 @@ ${recentWords.length > 0 ? recentWords.join("、") : "无"}
 
 AI线索要求：
 1. 必须正好生成${count}条
-2. 每条去除标点后必须是4到10个汉字
+2. ${difficulty.clueLengthRule}
 3. 不能出现核心词
 4. 不能重复种子描述
 5. 多条线索之间不能同义复述
-6. 信息密度要低，单条线索不能让人直接猜出核心词
-7. 多条线索合起来要能形成方向感
+6. 信息密度要符合本局难度，单条线索不能让人直接猜出核心词
+7. 多条线索合起来要能形成方向感，但高难度下只能形成模糊方向感
 8. 不要使用该词最标志性的唯一动作或唯一场景
 9. 线索应该让玩家可能联想到2到4个相近答案，而不是唯一答案
 10. 这些线索会由3个AI轮流说出，即使生成4条，也要让第4条像自然补充，而不是总结答案
+11. 高难度时，优先描述外围场景、使用后果、旁观者反应、出现时机，不要描述定义、典型功能或核心组成
 
 只输出JSON，不要输出解释。
 JSON格式：
